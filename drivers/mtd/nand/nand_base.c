@@ -211,7 +211,7 @@ static void nand_select_chip(struct mtd_info *mtd, int chipnr)
 	case -1:
 		chip->cmd_ctrl(mtd, NAND_CMD_NONE, 0 | NAND_CTRL_CHANGE);
 		break;
-	case 0:
+	case 0:  /* бЁжа */
 		break;
 
 	default:

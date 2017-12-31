@@ -42,6 +42,9 @@
 #include <mtd/cfi_flash.h>
 #include <watchdog.h>
 
+//#define DEBUG	1
+//#define _DEBUG  1
+
 /*
  * This file implements a Common Flash Interface (CFI) driver for
  * U-Boot.

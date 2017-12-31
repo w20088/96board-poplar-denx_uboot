@@ -273,8 +273,8 @@ int	abortboot(int bootdelay);
 extern char console_buffer[];
 
 /* arch/$(ARCH)/lib/board.c */
-void	board_init_f  (ulong) __attribute__ ((noreturn));
-void	board_init_r  (gd_t *, ulong) __attribute__ ((noreturn));
+unsigned int board_init_f  (ulong) ;
+void	board_init_r  (gd_t *, ulong) ;
 int	checkboard    (void);
 int	checkflash    (void);
 int	checkdram     (void);

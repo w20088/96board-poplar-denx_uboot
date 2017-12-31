@@ -35,6 +35,7 @@ SECTIONS
 	{
 		__image_copy_start = .;
 		CPUDIR/start.o (.text)
+                board/samsung/smdk2440/libsmdk2440.o (.text)
 		*(.text)
 	}
 
