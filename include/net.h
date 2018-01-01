@@ -125,6 +125,8 @@ extern int eth_getenv_enetaddr(char *name, uchar *enetaddr);
 extern int eth_setenv_enetaddr(char *name, const uchar *enetaddr);
 extern int eth_getenv_enetaddr_by_index(int index, uchar *enetaddr);
 
+extern unsigned char U_PHY_ADDR;
+extern unsigned char D_PHY_ADDR;
 extern int eth_init(bd_t *bis);			/* Initialize the device */
 extern int eth_send(volatile void *packet, int length);	   /* Send a packet */
 #ifdef CONFIG_API

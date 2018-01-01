@@ -28,6 +28,7 @@
 #include <common.h>
 #include <command.h>
 #include <asm/byteorder.h>
+#include <asm/unaligned.h>
 #include <part.h>
 #include <usb.h>
 
@@ -146,7 +147,8 @@ void usb_display_class_sub(unsigned char dclass, unsigned char subclass,
 
 void usb_display_string(struct usb_device *dev, int index)
 {
-	char buffer[256];
+	ALLOC_CACHE_ALIGN_BUFFER(char, buffer, 256);
+
 	if (index != 0) {
 		if (usb_string(dev, index, &buffer[0], 256) > 0)
 			printf("String: \"%s\"", buffer);
@@ -237,7 +239,7 @@ void usb_display_ep_desc(struct usb_endpoint_descriptor *epdesc)
 		printf("Interrupt");
 		break;
 	}
-	printf(" MaxPacket %d", epdesc->wMaxPacketSize);
+	printf(" MaxPacket %d", get_unaligned(&epdesc->wMaxPacketSize));
 	if ((epdesc->bmAttributes & 0x03) == 0x3)
 		printf(" Interval %dms", epdesc->bInterval);
 	printf("\n");
@@ -278,7 +280,7 @@ static inline char *portspeed(int speed)
 void usb_show_tree_graph(struct usb_device *dev, char *pre)
 {
 	int i, index;
-	int has_child, last_child, port;
+	int has_child, last_child;
 
 	index = strlen(pre);
 	printf(" %s", pre);
@@ -297,7 +299,6 @@ void usb_show_tree_graph(struct usb_device *dev, char *pre)
 				/* found our pointer, see if we have a
 				 * little sister
 				 */
-				port = i;
 				while (i++ < dev->parent->maxchild) {
 					if (dev->parent->children[i] != NULL) {
 						/* found a sister */
@@ -525,12 +526,15 @@ int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		 (strncmp(argv[1], "start", 5) == 0)) {
 		usb_stop();
 		printf("(Re)start USB...\n");
-		i = usb_init();
+		if (usb_init() >= 0) {
 #ifdef CONFIG_USB_STORAGE
 		/* try to recognize storage devices immediately */
-		if (i >= 0)
 			usb_stor_curr_dev = usb_stor_scan(1);
 #endif
+#ifdef CONFIG_USB_KEYBOARD
+			drv_usb_kbd_init();
+#endif
+		}
 		return 0;
 	}
 	if (strncmp(argv[1], "stop", 4) == 0) {
@@ -556,8 +560,14 @@ int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		return 1;
 	}
 	if (strncmp(argv[1], "tree", 4) == 0) {
-		printf("\nDevice Tree:\n");
-		usb_show_tree(usb_get_dev_index(0));
+		puts("USB device tree:\n");
+		for (i = 0; i < USB_MAX_DEVICE; i++) {
+			dev = usb_get_dev_index(i);
+			if (dev == NULL)
+				break;
+			if (dev->parent == NULL)
+				usb_show_tree(dev);
+		}
 		return 0;
 	}
 	if (strncmp(argv[1], "inf", 3) == 0) {
@@ -584,7 +594,7 @@ int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 					break;
 			}
 			if (dev == NULL) {
-				printf("*** NO Device avaiable ***\n");
+				printf("*** No device available ***\n");
 				return 0;
 			} else {
 				usb_display_desc(dev);
@@ -703,20 +713,22 @@ int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	return 1;
 }
 
+
 #ifdef CONFIG_USB_STORAGE
 U_BOOT_CMD(
 	usb,	5,	1,	do_usb,
 	"USB sub-system",
-	"reset - reset (rescan) USB controller\n"
-	"usb stop [f]  - stop USB [f]=force stop\n"
-	"usb tree  - show USB device tree\n"
+	"start - start (scan) USB controller\n"
+	"usb reset - reset (rescan) USB controller\n"
+	"usb stop [f] - stop USB [f]=force stop\n"
+	"usb tree - show USB device tree\n"
 	"usb info [dev] - show available USB devices\n"
-	"usb storage  - show details of USB storage devices\n"
+	"usb storage - show details of USB storage devices\n"
 	"usb dev [dev] - show or set current USB storage device\n"
 	"usb part [dev] - print partition table of one or all USB storage"
 	" devices\n"
 	"usb read addr blk# cnt - read `cnt' blocks starting at block `blk#'\n"
-	"    to memory address `addr'"
+	"    to memory address `addr'\n"
 	"usb write addr blk# cnt - write `cnt' blocks starting at block `blk#'\n"
 	"    from memory address `addr'"
 );
@@ -727,13 +739,13 @@ U_BOOT_CMD(
 	"boot from USB device",
 	"loadAddr dev:part"
 );
-
 #else
 U_BOOT_CMD(
 	usb,	5,	1,	do_usb,
 	"USB sub-system",
-	"reset - reset (rescan) USB controller\n"
-	"usb  tree  - show USB device tree\n"
-	"usb  info [dev] - show available USB devices"
+	"start - start (scan) USB controller\n"
+	"usb reset - reset (rescan) USB controller\n"
+	"usb tree - show USB device tree\n"
+	"usb info [dev] - show available USB devices"
 );
 #endif

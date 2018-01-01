@@ -31,6 +31,7 @@ extern void nand_init(void);
 #include <linux/mtd/nand.h>
 
 extern int board_nand_init(struct nand_chip *nand);
+extern int board_spi_nand_init(struct nand_chip *nand);
 
 typedef struct mtd_info nand_info_t;
 
@@ -50,6 +51,11 @@ static inline int nand_write(nand_info_t *info, loff_t ofs, size_t *len, u_char 
 static inline int nand_block_isbad(nand_info_t *info, loff_t ofs)
 {
 	return info->block_isbad(info, ofs);
+}
+
+static inline int nand_block_markbad(nand_info_t *info, loff_t ofs)
+{
+	return info->block_markbad(info, ofs);
 }
 
 static inline int nand_erase(nand_info_t *info, loff_t off, size_t size)
@@ -98,8 +104,8 @@ struct nand_read_options {
 typedef struct nand_read_options nand_read_options_t;
 
 struct nand_erase_options {
-	ulong length;		/* number of bytes to erase */
-	ulong offset;		/* first address in NAND to erase */
+	loff_t length;		/* number of bytes to erase */
+	loff_t offset;		/* first address in NAND to erase */
 	int quiet;		/* don't display progress messages */
 	int jffs2;		/* if true: format for jffs2 usage
 				 * (write appropriate cleanmarker blocks) */
@@ -109,10 +115,16 @@ struct nand_erase_options {
 
 typedef struct nand_erase_options nand_erase_options_t;
 
+void nand_fill_ecc(struct nand_chip *chip, uint8_t *oob, size_t len);
+
+int nand_read_yaffs_skip_bad(nand_info_t *nand, loff_t offset, size_t *length,
+		u_char *buffer);
+int nand_write_yaffs_skip_bad(nand_info_t *nand, loff_t offset, size_t *length,
+                u_char *buffer);
 int nand_read_skip_bad(nand_info_t *nand, loff_t offset, size_t *length,
 		       u_char *buffer);
 int nand_write_skip_bad(nand_info_t *nand, loff_t offset, size_t *length,
-			u_char *buffer);
+			u_char *buffer, int skipempty);
 int nand_erase_opts(nand_info_t *meminfo, const nand_erase_options_t *opts);
 
 #define NAND_LOCK_STATUS_TIGHT	0x01

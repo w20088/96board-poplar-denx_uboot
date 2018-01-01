@@ -24,7 +24,6 @@
 /* for now: just dummy functions to satisfy the linker */
 
 #include <common.h>
-
 void  flush_cache (unsigned long dummy1, unsigned long dummy2)
 {
 #ifdef CONFIG_OMAP2420

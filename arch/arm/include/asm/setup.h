@@ -205,6 +205,45 @@ struct tag_memclk {
 	u32 fmemclk;
 };
 
+#define ATAG_NDNDID	0x4E5F4944
+
+struct nand_tag {
+	unsigned char id[8];
+	int length;
+	unsigned long long chipsize;
+	unsigned long pagesize;
+	unsigned long erasesize;
+	unsigned long oobsize;
+	unsigned long options;
+	char name[16];
+};
+
+#define ATAG_SPIID	0x535F4944
+
+struct spi_operation_t {
+	unsigned char  iftype;
+	unsigned char  cmd;
+	unsigned char  dummy;
+	unsigned int   size;
+	unsigned int   clock;
+};
+
+struct spi_tag {
+	char name[16];
+
+	unsigned char  id[8];
+	unsigned int   id_len;
+
+	unsigned long  chipsize;
+	unsigned int   erasesize;
+	unsigned int   addrcycle;
+
+#define MAX_SPI_OP_T				(8)
+	struct spi_operation_t read[MAX_SPI_OP_T];
+	struct spi_operation_t write[MAX_SPI_OP_T];
+	struct spi_operation_t erase[MAX_SPI_OP_T];
+};
+
 struct tag {
 	struct tag_header hdr;
 	union {

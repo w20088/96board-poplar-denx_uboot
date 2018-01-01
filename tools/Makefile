@@ -77,7 +77,7 @@ OBJ_FILES-$(CONFIG_LCD_LOGO) += bmp_logo.o
 OBJ_FILES-$(CONFIG_VIDEO_LOGO) += bmp_logo.o
 NOPED_OBJ_FILES-y += default_image.o
 OBJ_FILES-y += envcrc.o
-NOPED_OBJ_FILES-y += fit_image.o
+#NOPED_OBJ_FILES-y += fit_image.o
 OBJ_FILES-$(CONFIG_CMD_NET) += gen_eth_addr.o
 OBJ_FILES-$(CONFIG_CMD_LOADS) += img2srec.o
 OBJ_FILES-$(CONFIG_INCA_IP) += inca-swap-bytes.o
@@ -169,14 +169,9 @@ $(obj)inca-swap-bytes$(SFX):	$(obj)inca-swap-bytes.o
 
 $(obj)mkimage$(SFX):	$(obj)crc32.o \
 			$(obj)default_image.o \
-			$(obj)fit_image.o \
 			$(obj)image.o \
-			$(obj)imximage.o \
-			$(obj)kwbimage.o \
-			$(obj)md5.o \
 			$(obj)mkimage.o \
 			$(obj)os_support.o \
-			$(obj)sha1.o \
 			$(LIBFDT_OBJS)
 	$(HOSTCC) $(HOSTCFLAGS) $(HOSTLDFLAGS) -o $@ $^
 	$(HOSTSTRIP) $@

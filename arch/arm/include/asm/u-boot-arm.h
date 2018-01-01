@@ -67,4 +67,23 @@ void	udelay_masked		(unsigned long usec);
 /* cpu/.../timer.c */
 int	timer_init		(void);
 
+int	arch_usb_init		(void);
+
+
+long long get_chipid(void);
+unsigned int get_ca_vendor(void);
+const char *get_cpu_name(void);
+unsigned int get_max_ddr_size(void);
+unsigned int get_timer_clock(void);
+int get_bootmedia(char **media, void *arg);
+const int get_cpu_version(char **version);
+int get_cpudevs(void);
+
+void set_slave_entry(unsigned int slave_entry);
+int get_cpuno(void);
+
+int insert_ddr_layout(unsigned int start, unsigned int end, char *name);
+void show_ddr_layout(void);
+unsigned int get_ddr_free(unsigned int *size, unsigned int align);
+
 #endif	/* _U_BOOT_ARM_H_ */

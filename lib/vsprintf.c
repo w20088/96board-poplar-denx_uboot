@@ -643,6 +643,7 @@ int vsprintf(char *buf, const char *fmt, va_list args)
 	return str-buf;
 }
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 /**
  * sprintf - Format a string and place it in a buffer
  * @buf: The buffer to place the result into
@@ -664,6 +665,7 @@ int sprintf(char * buf, const char *fmt, ...)
 	va_end(args);
 	return i;
 }
+#endif
 
 void panic(const char *fmt, ...)
 {

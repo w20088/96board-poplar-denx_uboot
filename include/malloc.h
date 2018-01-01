@@ -937,6 +937,16 @@ int     mALLOPt();
 struct mallinfo mALLINFo();
 #endif
 
+static inline void *devmemalign(uint alignment, uint bytes)
+{
+	uint align_size = bytes;
+	if (!alignment)
+		return malloc(align_size);
+
+	align_size = (bytes + alignment - 1) / alignment * alignment;
+	return malloc(align_size);
+}
+
 /*
  * Begin and End of memory area for malloc(), and current "brk"
  */

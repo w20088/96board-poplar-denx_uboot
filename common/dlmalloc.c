@@ -1524,11 +1524,14 @@ void *sbrk(ptrdiff_t increment)
 
 void mem_malloc_init(ulong start, ulong size)
 {
+	insert_ddr_layout(start, start + size, "malloc");
 	mem_malloc_start = start;
 	mem_malloc_end = start + size;
 	mem_malloc_brk = start;
 
+	dcache_enable(0);
 	memset((void *)mem_malloc_start, 0, size);
+	dcache_disable();
 }
 
 /* field-extraction macros */

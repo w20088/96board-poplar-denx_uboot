@@ -29,6 +29,7 @@
 #include <environment.h>
 #include <malloc.h>
 #include <spi_flash.h>
+#include <linux/mtd/mtd.h>
 
 #ifndef CONFIG_ENV_SPI_BUS
 # define CONFIG_ENV_SPI_BUS	0
@@ -48,22 +49,23 @@ DECLARE_GLOBAL_DATA_PTR;
 /* references to names in env_common.c */
 extern uchar default_environment[];
 
-char * env_name_spec = "SPI Flash";
-env_t *env_ptr;
+extern env_t *env_ptr;
 
 static struct spi_flash *env_flash;
 
-uchar env_get_char_spec(int index)
+static uchar sf_env_get_char_spec(int index)
 {
 	return *((uchar *)(gd->env_addr + index));
 }
 
-int saveenv(void)
+static int sf_saveenv(void)
 {
 	u32 saved_size, saved_offset;
 	char *saved_buffer = NULL;
 	u32 sector = 1;
 	int ret;
+	u_int32_t erase_length;
+	struct mtd_info_ex *spiflash_info = get_spiflash_info();
 
 	if (!env_flash) {
 		puts("Environment SPI flash not initialized\n");
@@ -90,12 +92,22 @@ int saveenv(void)
 			sector++;
 	}
 
-	puts("Erasing SPI flash...");
-	ret = spi_flash_erase(env_flash, CONFIG_ENV_OFFSET, sector * CONFIG_ENV_SECT_SIZE);
+	erase_length = (sector * CONFIG_ENV_SECT_SIZE);
+	if (erase_length < spiflash_info->erasesize)
+	{
+		printf("Warning: Erase size 0x%08x smaller than one "	\
+			"erase block 0x%08x\n", erase_length, spiflash_info->erasesize);
+		printf("         Erasing 0x%08x instead\n", spiflash_info->erasesize);
+		erase_length = spiflash_info->erasesize;
+	}
+	printf("Erasing SPI flash, offset 0x%08x size %s ...",
+		CONFIG_ENV_OFFSET, ultohstr(erase_length));
+	ret = spi_flash_erase(env_flash, CONFIG_ENV_OFFSET, erase_length);
 	if (ret)
 		goto done;
 
-	puts("Writing to SPI flash...");
+	printf("done\nWriting to SPI flash, offset 0x%08x size %s ...",
+		CONFIG_ENV_OFFSET, ultohstr(CONFIG_ENV_SIZE));
 	ret = spi_flash_write(env_flash, CONFIG_ENV_OFFSET, CONFIG_ENV_SIZE, env_ptr);
 	if (ret)
 		goto done;
@@ -115,7 +127,7 @@ int saveenv(void)
 	return ret;
 }
 
-void env_relocate_spec(void)
+static int sf_env_relocate_spec(unsigned int offset)
 {
 	int ret;
 
@@ -124,7 +136,7 @@ void env_relocate_spec(void)
 	if (!env_flash)
 		goto err_probe;
 
-	ret = spi_flash_read(env_flash, CONFIG_ENV_OFFSET, CONFIG_ENV_SIZE, env_ptr);
+	ret = spi_flash_read(env_flash, offset, CONFIG_ENV_SIZE, env_ptr);
 	if (ret)
 		goto err_read;
 
@@ -133,19 +145,17 @@ void env_relocate_spec(void)
 
 	gd->env_valid = 1;
 
-	return;
+	return 0;
 
 err_read:
 	spi_flash_free(env_flash);
 	env_flash = NULL;
 err_probe:
 err_crc:
-	puts("*** Warning - bad CRC, using default environment\n\n");
-
-	set_default_env();
+	return 1;
 }
 
-int env_init(void)
+static int sf_env_init(void)
 {
 	/* SPI flash isn't usable before relocation */
 	gd->env_addr = (ulong)&default_environment[0];
@@ -153,3 +163,12 @@ int env_init(void)
 
 	return 0;
 }
+
+struct env_common_func_t sf_env_cmn_func = {
+	.env_init = sf_env_init,
+	.env_get_char_spec = sf_env_get_char_spec,
+	.saveenv = sf_saveenv,
+	.env_relocate_spec = sf_env_relocate_spec,
+	.env_name_spec = "SPI Flash",
+	.env_media = BOOT_MEDIA_SPIFLASH,
+};

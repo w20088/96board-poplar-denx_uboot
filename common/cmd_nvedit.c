@@ -63,9 +63,10 @@ DECLARE_GLOBAL_DATA_PTR;
     !defined(CONFIG_ENV_IS_IN_NVRAM)	&& \
     !defined(CONFIG_ENV_IS_IN_ONENAND)	&& \
     !defined(CONFIG_ENV_IS_IN_SPI_FLASH)	&& \
+    !defined(CONFIG_ENV_IS_IN_EMMC)	&& \
     !defined(CONFIG_ENV_IS_NOWHERE)
 # error Define one of CONFIG_ENV_IS_IN_{EEPROM|FLASH|DATAFLASH|ONENAND|\
-SPI_FLASH|MG_DISK|NVRAM|NOWHERE}
+SPI_FLASH|EMMC|MG_DISK|NVRAM|NOWHERE}
 #endif
 
 #define XMK_STR(x)	#x
@@ -206,11 +207,11 @@ int _do_setenv (int flag, int argc, char *argv[])
 	}
 
 	/* Check for console redirection */
-	if (strcmp(name,"stdin") == 0) {
+	if (strncmp(name, "stdin", sizeof("stdin")) == 0) {
 		console = stdin;
-	} else if (strcmp(name,"stdout") == 0) {
+	} else if (strncmp(name, "stdout", sizeof("stdout")) == 0) {
 		console = stdout;
-	} else if (strcmp(name,"stderr") == 0) {
+	} else if (strncmp(name, "stderr", sizeof("stderr")) == 0) {
 		console = stderr;
 	}
 
@@ -249,13 +250,13 @@ int _do_setenv (int flag, int argc, char *argv[])
 		if (
 #ifdef CONFIG_HAS_UID
 		/* Allow serial# forced overwrite with 0xdeaf4add flag */
-		    ((strcmp (name, "serial#") == 0) && (flag != 0xdeaf4add)) ||
+		    ((strncmp (name, "serial#", sizeof("serial#")) == 0) && (flag != 0xdeaf4add)) ||
 #else
-		    (strcmp (name, "serial#") == 0) ||
+		    (strncmp (name, "serial#", sizeof("serial#")) == 0) ||
 #endif
-		    ((strcmp (name, "ethaddr") == 0)
+		    ((strncmp (name, "ethaddr", sizeof("ethaddr")) == 0)
 #if defined(CONFIG_OVERWRITE_ETHADDR_ONCE) && defined(CONFIG_ETHADDR)
-		     && (strcmp ((char *)env_get_addr(oldval),MK_STR(CONFIG_ETHADDR)) != 0)
+		     && (strncmp ((char *)env_get_addr(oldval), MK_STR(CONFIG_ETHADDR), sizeof(MK_STR(CONFIG_ETHADDR))) != 0)
 #endif	/* CONFIG_OVERWRITE_ETHADDR_ONCE && CONFIG_ETHADDR */
 		    ) ) {
 			printf ("Can't overwrite \"%s\"\n", name);
@@ -266,7 +267,7 @@ int _do_setenv (int flag, int argc, char *argv[])
 		/*
 		 * Switch to new baudrate if new baudrate is supported
 		 */
-		if (strcmp(argv[1],"baudrate") == 0) {
+		if (strncmp(argv[1], "baudrate", sizeof("baudrate")) == 0) {
 			int baudrate = simple_strtoul(argv[2], NULL, 10);
 			int i;
 			for (i=0; i<N_BAUDRATES; ++i) {
@@ -313,7 +314,12 @@ int _do_setenv (int flag, int argc, char *argv[])
 
 	/* Delete only ? */
 	if ((argc < 3) || argv[2] == NULL) {
-		env_crc_update ();
+		/* 
+		 * optimize uboot startup time, only do_saveenv command update CRC, 
+		 * so if you want do saveenv, you should call function env_crc_update() 
+		 * before call function saveenv()
+		 */
+		/* env_crc_update (); */
 		return 0;
 	}
 
@@ -351,17 +357,22 @@ int _do_setenv (int flag, int argc, char *argv[])
 	*++env = '\0';
 
 	/* Update CRC */
-	env_crc_update ();
+	/* 
+	 * optimize uboot startup time, only do_saveenv command update CRC, 
+	 * so if you want do saveenv, you should call function env_crc_update() 
+	 * before call function saveenv()
+	 */
+	/* env_crc_update (); */
 
 	/*
 	 * Some variables should be updated when the corresponding
 	 * entry in the enviornment is changed
 	 */
 
-	if (strcmp(argv[1],"ethaddr") == 0)
+	if (strncmp(argv[1], "ethaddr", sizeof("ethaddr")) == 0)
 		return 0;
 
-	if (strcmp(argv[1],"ipaddr") == 0) {
+	if (strncmp(argv[1], "ipaddr", sizeof("ipaddr")) == 0) {
 		char *s = argv[2];	/* always use only one arg */
 		char *e;
 		unsigned long addr;
@@ -375,20 +386,20 @@ int _do_setenv (int flag, int argc, char *argv[])
 		bd->bi_ip_addr = htonl(addr);
 		return 0;
 	}
-	if (strcmp(argv[1],"loadaddr") == 0) {
+	if (strncmp(argv[1], "loadaddr", sizeof("loadaddr")) == 0) {
 		load_addr = simple_strtoul(argv[2], NULL, 16);
 		return 0;
 	}
 #if defined(CONFIG_CMD_NET)
-	if (strcmp(argv[1],"bootfile") == 0) {
+	if (strncmp(argv[1], "bootfile", sizeof("bootfile")) == 0) {
 		copy_filename (BootFile, argv[2], sizeof(BootFile));
 		return 0;
 	}
 #endif
 
 #ifdef CONFIG_AMIGAONEG3SE
-	if (strcmp(argv[1], "vga_fg_color") == 0 ||
-	    strcmp(argv[1], "vga_bg_color") == 0 ) {
+	if (strncmp(argv[1], "vga_fg_color", sizeof("vga_fg_color")) == 0 ||
+	    strncmp(argv[1], "vga_bg_color", sizeof("vga_bg_color")) == 0 ) {
 		extern void video_set_color(unsigned char attr);
 		extern unsigned char video_get_attr(void);
 
@@ -590,18 +601,31 @@ int getenv_r (char *name, char *buf, unsigned len)
 
 int do_saveenv (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
-	extern char * env_name_spec;
+	printf ("Saving Environment to %s...\n", env_get_media(NULL));
 
-	printf ("Saving Environment to %s...\n", env_name_spec);
+	/* 
+	 * optimize uboot startup time, only do_saveenv command update CRC, 
+	 * so if you want do saveenv, you should call function env_crc_update() 
+	 * before call function saveenv()
+	 */
+	env_crc_update ();
 
 	return (saveenv() ? 1 : 0);
 }
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 U_BOOT_CMD(
 	saveenv, 1, 0,	do_saveenv,
 	"save environment variables to persistent storage",
 	""
 );
+#else
+U_BOOT_CMD(
+	saveenv, 1, 0,	do_saveenv,
+	"",
+	""
+);
+#endif
 
 #endif
 
@@ -637,6 +661,7 @@ U_BOOT_CMD(
 );
 #endif
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 U_BOOT_CMD(
 	printenv, CONFIG_SYS_MAXARGS, 1,	do_printenv,
 	"print environment variables",
@@ -644,7 +669,15 @@ U_BOOT_CMD(
 	"printenv name ...\n"
 	"    - print value of environment variable 'name'"
 );
+#else
+U_BOOT_CMD(
+	printenv, CONFIG_SYS_MAXARGS, 1,	do_printenv,
+	"",
+	""
+);
+#endif
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 U_BOOT_CMD(
 	setenv, CONFIG_SYS_MAXARGS, 0,	do_setenv,
 	"set environment variables",
@@ -653,6 +686,13 @@ U_BOOT_CMD(
 	"setenv name\n"
 	"    - delete environment variable 'name'"
 );
+#else
+U_BOOT_CMD(
+	setenv, CONFIG_SYS_MAXARGS, 0,	do_setenv,
+	"",
+	""
+);
+#endif
 
 #if defined(CONFIG_CMD_ASKENV)
 

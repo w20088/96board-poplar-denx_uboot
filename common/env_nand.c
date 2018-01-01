@@ -60,27 +60,18 @@
 /* references to names in env_common.c */
 extern uchar default_environment[];
 
-char * env_name_spec = "NAND";
-
-
 #if defined(ENV_IS_EMBEDDED)
 extern uchar environment[];
 env_t *env_ptr = (env_t *)(&environment[0]);
 #elif defined(CONFIG_NAND_ENV_DST)
 env_t *env_ptr = (env_t *)CONFIG_NAND_ENV_DST;
 #else /* ! ENV_IS_EMBEDDED */
-env_t *env_ptr = 0;
+extern env_t *env_ptr;
 #endif /* ENV_IS_EMBEDDED */
-
-
-/* local functions */
-#if !defined(ENV_IS_EMBEDDED)
-static void use_default(void);
-#endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
-uchar env_get_char_spec (int index)
+static uchar nand_env_get_char_spec (int index)
 {
 	return ( *((uchar *)(gd->env_addr + index)) );
 }
@@ -97,7 +88,7 @@ uchar env_get_char_spec (int index)
  * the SPL loads not only the U-Boot image from NAND but also the
  * environment.
  */
-int env_init(void)
+static int nand_env_init(void)
 {
 #if defined(ENV_IS_EMBEDDED) || defined(CONFIG_NAND_ENV_DST)
 	int crc1_ok = 0, crc2_ok = 0;
@@ -161,7 +152,7 @@ int env_init(void)
  * The legacy NAND code saved the environment in the first NAND device i.e.,
  * nand_dev_desc + 0. This is also the behaviour using the new NAND code.
  */
-int writeenv(size_t offset, u_char *buf)
+static int writeenv(size_t offset, u_char *buf)
 {
 	size_t end = offset + CONFIG_ENV_RANGE;
 	size_t amount_saved = 0;
@@ -190,7 +181,7 @@ int writeenv(size_t offset, u_char *buf)
 	return 0;
 }
 #ifdef CONFIG_ENV_OFFSET_REDUND
-int saveenv(void)
+static int nand_saveenv(void)
 {
 	int ret = 0;
 	nand_erase_options_t nand_erase_options;
@@ -231,7 +222,7 @@ int saveenv(void)
 	return ret;
 }
 #else /* ! CONFIG_ENV_OFFSET_REDUND */
-int saveenv(void)
+static int nand_saveenv(void)
 {
 	int ret = 0;
 	nand_erase_options_t nand_erase_options;
@@ -260,7 +251,7 @@ int saveenv(void)
 #endif /* CONFIG_ENV_OFFSET_REDUND */
 #endif /* CMD_SAVEENV */
 
-int readenv (size_t offset, u_char * buf)
+static int readenv (size_t offset, u_char * buf)
 {
 	size_t end = offset + CONFIG_ENV_RANGE;
 	size_t amount_loaded = 0;
@@ -289,7 +280,7 @@ int readenv (size_t offset, u_char * buf)
 }
 
 #ifdef CONFIG_ENV_OFFSET_REDUND
-void env_relocate_spec (void)
+static int nand_env_relocate_spec (unsigned int offset)
 {
 #if !defined(ENV_IS_EMBEDDED)
 	int crc1_ok = 0, crc2_ok = 0;
@@ -302,10 +293,10 @@ void env_relocate_spec (void)
 		puts("Can't allocate buffers for environment\n");
 		free (tmp_env1);
 		free (tmp_env2);
-		return use_default();
+		return 1;
 	}
 
-	if (readenv(CONFIG_ENV_OFFSET, (u_char *) tmp_env1))
+	if (readenv(offset, (u_char *) tmp_env1))
 		puts("No Valid Environment Area Found\n");
 	if (readenv(CONFIG_ENV_OFFSET_REDUND, (u_char *) tmp_env2))
 		puts("No Valid Reundant Environment Area Found\n");
@@ -316,7 +307,7 @@ void env_relocate_spec (void)
 	if(!crc1_ok && !crc2_ok) {
 		free(tmp_env1);
 		free(tmp_env2);
-		return use_default();
+		return 1;
 	} else if(crc1_ok && !crc2_ok)
 		gd->env_valid = 1;
 	else if(!crc1_ok && crc2_ok)
@@ -344,6 +335,7 @@ void env_relocate_spec (void)
 		env_ptr = tmp_env2;
 		free(tmp_env1);
 	}
+	return 0;
 
 #endif /* ! ENV_IS_EMBEDDED */
 }
@@ -352,25 +344,28 @@ void env_relocate_spec (void)
  * The legacy NAND code saved the environment in the first NAND device i.e.,
  * nand_dev_desc + 0. This is also the behaviour using the new NAND code.
  */
-void env_relocate_spec (void)
+static int nand_env_relocate_spec (unsigned int offset)
 {
 #if !defined(ENV_IS_EMBEDDED)
 	int ret;
 
-	ret = readenv(CONFIG_ENV_OFFSET, (u_char *) env_ptr);
+	ret = readenv(offset, (u_char *) env_ptr);
 	if (ret)
-		return use_default();
+		return 1;
 
 	if (crc32(0, env_ptr->data, ENV_SIZE) != env_ptr->crc)
-		return use_default();
+		return 1;
 #endif /* ! ENV_IS_EMBEDDED */
+	return 0;
 }
 #endif /* CONFIG_ENV_OFFSET_REDUND */
 
-#if !defined(ENV_IS_EMBEDDED)
-static void use_default()
-{
-	puts ("*** Warning - bad CRC or NAND, using default environment\n\n");
-	set_default_env();
-}
-#endif
+struct env_common_func_t nand_env_cmn_func = {
+	.env_init = nand_env_init,
+	.env_get_char_spec = nand_env_get_char_spec,
+	.saveenv = nand_saveenv,
+	.env_relocate_spec = nand_env_relocate_spec,
+	.env_name_spec = "NAND",
+	.env_media = BOOT_MEDIA_NAND,
+};
+

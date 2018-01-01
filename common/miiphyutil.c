@@ -328,6 +328,7 @@ int miiphy_reset (char *devname, unsigned char addr)
 	return (0);
 }
 
+#define BMSR_ESTATEN 0x100
 /*****************************************************************************
  *
  * Determine the ethernet speed (10/100/1000).  Return 10 on error.
@@ -335,17 +336,17 @@ int miiphy_reset (char *devname, unsigned char addr)
 int miiphy_speed (char *devname, unsigned char addr)
 {
 	u16 bmcr, anlpar;
+	u16 btsr, val;
 
-#if defined(CONFIG_PHY_GIGE)
-	u16 btsr;
+	if (miiphy_read(devname,addr,PHY_BMSR,&val) != 0) {
+		debug("PHY speed read failed\n");
+		goto miiphy_read_failed;
+	};
 
-	/*
-	 * Check for 1000BASE-X.  If it is supported, then assume that the speed
-	 * is 1000.
-	 */
-	if (miiphy_is_1000base_x (devname, addr)) {
-		return _1000BASET;
-	}
+	if(val & BMSR_ESTATEN){
+		if (miiphy_is_1000base_x (devname, addr)) {
+			return _1000BASET;
+		}
 	/*
 	 * No 1000BASE-X, so assume 1000BASE-T/100BASE-TX/10BASE-T register set.
 	 */
@@ -358,7 +359,7 @@ int miiphy_speed (char *devname, unsigned char addr)
 	    (btsr & (PHY_1000BTSR_1000FD | PHY_1000BTSR_1000HD))) {
 		return _1000BASET;
 	}
-#endif /* CONFIG_PHY_GIGE */
+    }
 
 	/* Check Basic Management Control Register first. */
 	if (miiphy_read (devname, addr, PHY_BMCR, &bmcr)) {
@@ -388,10 +389,15 @@ miiphy_read_failed:
  */
 int miiphy_duplex (char *devname, unsigned char addr)
 {
-	u16 bmcr, anlpar;
+	u16 bmcr, anlpar, val;
 
-#if defined(CONFIG_PHY_GIGE)
-	u16 btsr;
+	if (miiphy_read(devname,addr,PHY_BMSR,&val) != 0) {
+		debug("PHY duplex read failed\n");
+		goto miiphy_read_failed;
+	};
+
+	if(val & BMSR_ESTATEN){
+		u16 btsr;
 
 	/* Check for 1000BASE-X. */
 	if (miiphy_is_1000base_x (devname, addr)) {
@@ -416,7 +422,7 @@ int miiphy_duplex (char *devname, unsigned char addr)
 			return HALF;
 		}
 	}
-#endif /* CONFIG_PHY_GIGE */
+    }
 
 	/* Check Basic Management Control Register first. */
 	if (miiphy_read (devname, addr, PHY_BMCR, &bmcr)) {
@@ -448,7 +454,6 @@ miiphy_read_failed:
  */
 int miiphy_is_1000base_x (char *devname, unsigned char addr)
 {
-#if defined(CONFIG_PHY_GIGE)
 	u16 exsr;
 
 	if (miiphy_read (devname, addr, PHY_EXSR, &exsr)) {
@@ -457,9 +462,6 @@ int miiphy_is_1000base_x (char *devname, unsigned char addr)
 		return 0;
 	}
 	return 0 != (exsr & (PHY_EXSR_1000XF | PHY_EXSR_1000XH));
-#else
-	return 0;
-#endif
 }
 
 #ifdef CONFIG_SYS_FAULT_ECHO_LINK_DOWN

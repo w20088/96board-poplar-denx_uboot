@@ -25,7 +25,21 @@ include $(TOPDIR)/config.mk
 
 LIB	= $(obj)libcommon.a
 
-AOBJS	=
+ifdef CONFIG_BOOTROM_SUPPORT
+COBJS-y += bootstrap.o
+else
+ifdef CONFIG_BOOTROM_CA_SUPPORT
+COBJS-y += bootstrap.o
+endif
+endif
+
+ifdef CONFIG_TEE_SUPPORT
+COBJS-y += loadsecureimg.o
+endif
+
+ifdef CONFIG_ARM64_SUPPORT
+COBJS-y += load_fip.o
+endif
 
 # core
 COBJS-y += main.o
@@ -35,21 +49,33 @@ COBJS-y += dlmalloc.o
 COBJS-y += exports.o
 COBJS-$(CONFIG_SYS_HUSH_PARSER) += hush.o
 COBJS-y += image.o
-COBJS-y += memsize.o
-COBJS-y += s_record.o
+COBJS-$(CONFIG_OF_LIBFDT) += image-fdt.o
 COBJS-$(CONFIG_SERIAL_MULTI) += serial.o
 COBJS-y += stdio.o
-COBJS-y += xyzModem.o
+COBJS-y += flash_part.o
+COBJS-y += spiflash_logif.o
+COBJS-y += nand_logif.o
+COBJS-y += emmc_logif.o
 
 # core command
-COBJS-y += cmd_boot.o
-COBJS-y += cmd_bootm.o
-COBJS-y += cmd_help.o
-COBJS-y += cmd_nvedit.o
+ifndef CONFIG_SUPPORT_CA_RELEASE
+COBJS-y += cmd_getinfo.o
+ifndef CONFIG_SUPPORT_CA_DEBUG
+COBJS-y += xyzModem.o
 COBJS-y += cmd_version.o
+COBJS-y += s_record.o
+endif
+endif
 
+ifndef CONFIG_SUPPORT_CA_RELEASE
+COBJS-y += cmd_boot.o
+COBJS-y += cmd_help.o
+endif
+COBJS-y += cmd_bootm.o
+COBJS-y += cmd_nvedit.o
+COBJS-$(CONFIG_HISI_SNAPSHOT_BOOT) += cmd_bootss.o
 # environment
-COBJS-y += env_common.o
+COBJS-y += env_common.o env_common_func.o
 COBJS-$(CONFIG_ENV_IS_IN_DATAFLASH) += env_dataflash.o
 COBJS-$(CONFIG_ENV_IS_IN_EEPROM) += env_eeprom.o
 COBJS-$(CONFIG_ENV_IS_EMBEDDED) += env_embedded.o
@@ -62,6 +88,7 @@ COBJS-$(CONFIG_ENV_IS_IN_NAND) += env_nand.o
 COBJS-$(CONFIG_ENV_IS_IN_NVRAM) += env_nvram.o
 COBJS-$(CONFIG_ENV_IS_IN_ONENAND) += env_onenand.o
 COBJS-$(CONFIG_ENV_IS_IN_SPI_FLASH) += env_sf.o
+COBJS-$(CONFIG_ENV_IS_IN_EMMC) += env_emmc.o
 COBJS-$(CONFIG_ENV_IS_NOWHERE) += env_nowhere.o
 
 # command
@@ -99,6 +126,7 @@ COBJS-$(CONFIG_CMD_FLASH) += cmd_flash.o
 ifdef CONFIG_FPGA
 COBJS-$(CONFIG_CMD_FPGA) += cmd_fpga.o
 endif
+COBJS-$(CONFIG_CMD_UPDATE) += cmd_update.o
 COBJS-$(CONFIG_CMD_I2C) += cmd_i2c.o
 COBJS-$(CONFIG_CMD_IDE) += cmd_ide.o
 COBJS-$(CONFIG_CMD_IMMAP) += cmd_immap.o
@@ -107,7 +135,12 @@ COBJS-$(CONFIG_CMD_ITEST) += cmd_itest.o
 COBJS-$(CONFIG_CMD_JFFS2) += cmd_jffs2.o
 COBJS-$(CONFIG_CMD_CRAMFS) += cmd_cramfs.o
 COBJS-$(CONFIG_CMD_LICENSE) += cmd_license.o
+ifndef CONFIG_SUPPORT_CA_RELEASE
+ifndef CONFIG_SUPPORT_CA_DEBUG
 COBJS-y += cmd_load.o
+endif
+endif
+
 COBJS-$(CONFIG_LOGBUFFER) += cmd_log.o
 COBJS-$(CONFIG_ID_EEPROM) += cmd_mac.o
 COBJS-$(CONFIG_CMD_MEMORY) += cmd_mem.o
@@ -127,7 +160,11 @@ COBJS-$(CONFIG_CMD_OTP) += cmd_otp.o
 ifdef CONFIG_PCI
 COBJS-$(CONFIG_CMD_PCI) += cmd_pci.o
 endif
+ifndef CONFIG_SUPPORT_CA_RELEASE
+ifndef CONFIG_SUPPORT_CA_DEBUG
 COBJS-y += cmd_pcmcia.o
+endif
+endif
 COBJS-$(CONFIG_CMD_PORTIO) += cmd_portio.o
 COBJS-$(CONFIG_CMD_REGINFO) += cmd_reginfo.o
 COBJS-$(CONFIG_CMD_REISER) += cmd_reiser.o
@@ -145,13 +182,15 @@ COBJS-$(CONFIG_CMD_UBI) += cmd_ubi.o
 COBJS-$(CONFIG_CMD_UBIFS) += cmd_ubifs.o
 COBJS-$(CONFIG_CMD_UNIVERSE) += cmd_universe.o
 ifdef CONFIG_CMD_USB
-COBJS-y += cmd_usb.o
+COBJS-y += cmd_usb.o usb_hub.o
 COBJS-y += usb.o
 COBJS-$(CONFIG_USB_STORAGE) += usb_storage.o
+COBJS-$(CONFIG_USB_VFAT_INF) += usb_if.o
 endif
 COBJS-$(CONFIG_CMD_XIMG) += cmd_ximg.o
 COBJS-$(CONFIG_YAFFS2) += cmd_yaffs2.o
 COBJS-$(CONFIG_VFD) += cmd_vfd.o
+COBJS-$(CONFIG_HIBERNATE) += cmd_hibernate.o
 
 # others
 COBJS-$(CONFIG_DDR_SPD) += ddr_spd.o
@@ -165,8 +204,22 @@ COBJS-$(CONFIG_LYNXKDI) += lynxkdi.o
 COBJS-$(CONFIG_MODEM_SUPPORT) += modem.o
 COBJS-$(CONFIG_UPDATE_TFTP) += update.o
 COBJS-$(CONFIG_USB_KEYBOARD) += usb_kbd.o
+COBJS-$(CONFIG_DDR_TRAINING) += cmd_ddr_training.o
+COBJS-$(CONFIG_DDR_TRAINING_V2) += cmd_ddr_training_v2.o
+COBJS-$(CONFIG_DDR_TRAINING_HI3716MV300) += hi3716mv300_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_HI3716CV100) += hi3716cv100_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_HI3712V100)  += hi3712v100_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_S40)  += s40_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_HI3798MX)  += hi3798mx_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_S5) += s5_ddr_training_printf.o
+COBJS-$(CONFIG_DDR_TRAINING_HI3716MV410)  += hi3716mv410_ddr_training_printf.o
+AOBJS-$(CONFIG_DDR_TRAINING) += ddr_training_entry.o
+AOBJS-$(CONFIG_MERGE_IMAGE_SUPPORT)  += merge_image.o
+ifdef CONFIG_ARM64_SUPPORT
+AOBJS-y += arm64_boot.o
+endif
 
-
+AOBJS	:= $(sort $(AOBJS-y))
 COBJS	:= $(sort $(COBJS-y))
 SRCS	:= $(AOBJS:.o=.S) $(COBJS:.o=.c)
 OBJS	:= $(addprefix $(obj),$(AOBJS) $(COBJS))

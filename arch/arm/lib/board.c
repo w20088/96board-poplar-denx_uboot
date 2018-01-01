@@ -48,7 +48,12 @@
 #include <serial.h>
 #include <nand.h>
 #include <onenand_uboot.h>
+#include <spi_flash.h>
 #include <mmc.h>
+#include <boot/customer.h>
+#include <asm/io.h>
+#include <environment.h>
+#include <ethcfg.h>
 
 #ifdef CONFIG_BITBANGMII
 #include <miiphy.h>
@@ -74,8 +79,12 @@ extern void dataflash_print_info(void);
 #define CONFIG_IDENT_STRING ""
 #endif
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 const char version_string[] =
 	U_BOOT_VERSION" (" U_BOOT_DATE " - " U_BOOT_TIME ")"CONFIG_IDENT_STRING;
+#else
+const char version_string[] = "";
+#endif
 
 #ifdef CONFIG_DRIVER_RTL8019
 extern void rtl8019_get_enetaddr (uchar * addr);
@@ -86,38 +95,37 @@ extern void rtl8019_get_enetaddr (uchar * addr);
 #include <i2c.h>
 #endif
 
+#ifdef CONFIG_CMD_NAND
+extern int nand_rr_param_init(void);
+#endif
 
-/************************************************************************
- * Coloured LED functionality
- ************************************************************************
- * May be supplied by boards if desired
- */
-void inline __coloured_LED_init (void) {}
-void coloured_LED_init (void) __attribute__((weak, alias("__coloured_LED_init")));
-void inline __red_LED_on (void) {}
-void red_LED_on (void) __attribute__((weak, alias("__red_LED_on")));
-void inline __red_LED_off(void) {}
-void red_LED_off(void) __attribute__((weak, alias("__red_LED_off")));
-void inline __green_LED_on(void) {}
-void green_LED_on(void) __attribute__((weak, alias("__green_LED_on")));
-void inline __green_LED_off(void) {}
-void green_LED_off(void) __attribute__((weak, alias("__green_LED_off")));
-void inline __yellow_LED_on(void) {}
-void yellow_LED_on(void) __attribute__((weak, alias("__yellow_LED_on")));
-void inline __yellow_LED_off(void) {}
-void yellow_LED_off(void) __attribute__((weak, alias("__yellow_LED_off")));
-void inline __blue_LED_on(void) {}
-void blue_LED_on(void) __attribute__((weak, alias("__blue_LED_on")));
-void inline __blue_LED_off(void) {}
-void blue_LED_off(void) __attribute__((weak, alias("__blue_LED_off")));
+#ifdef CONFIG_GENERIC_MMC
+extern int mmc_flash_init(void);
+#endif
 
-/************************************************************************
- * Init Utilities							*
- ************************************************************************
- * Some of this code should be moved into the core functions,
- * or dropped completely,
- * but let's get it working (again) first...
+#ifdef CONFIG_DDR_TRAINING
+extern int check_ddr_training(void);
+#endif /* CONFIG_DDR_TRAINING */
+
+#ifdef CONFIG_PRODUCT_WITH_BOOT
+extern int fastapp_entry(int argc, char *argv[]);
+extern int product_init(void);
+#endif
+
+extern int reserve_mem_init(void);
+extern int show_reserve_mem(void);
+extern void init_reg2(void);
+/*
+ * Phy address should pass to kernel, even if u-boot is not support net driver
+ * The value priority: (The left side config will replace the right side config)
+ * Environment > compile config > uboot default value
+ *     Environment           - setenv "phyaddr"
+ *     Compile config        - HISFV_PHY_U
+ *     u-boot default value  - HISFV_DEFAULT_PHY_U
  */
+unsigned char U_PHY_ADDR = HISFV_DEFAULT_PHY_U;
+unsigned char D_PHY_ADDR = HISFV_DEFAULT_PHY_D;
+
 
 #if defined(CONFIG_ARM_DCC) && !defined(CONFIG_BAUDRATE)
 #define CONFIG_BAUDRATE 115200
@@ -136,47 +144,6 @@ static int init_baudrate (void)
 static int display_banner (void)
 {
 	printf ("\n\n%s\n\n", version_string);
-	debug ("U-Boot code: %08lX -> %08lX  BSS: -> %08lX\n",
-	       _armboot_start, _bss_start, _bss_end);
-#ifdef CONFIG_MODEM_SUPPORT
-	debug ("Modem Support enabled\n");
-#endif
-#ifdef CONFIG_USE_IRQ
-	debug ("IRQ Stack: %08lx\n", IRQ_STACK_START);
-	debug ("FIQ Stack: %08lx\n", FIQ_STACK_START);
-#endif
-
-	return (0);
-}
-
-/*
- * WARNING: this code looks "cleaner" than the PowerPC version, but
- * has the disadvantage that you either get nothing, or everything.
- * On PowerPC, you might see "DRAM: " before the system hangs - which
- * gives a simple yet clear indication which part of the
- * initialization if failing.
- */
-static int display_dram_config (void)
-{
-	int i;
-
-#ifdef DEBUG
-	puts ("RAM Configuration:\n");
-
-	for(i=0; i<CONFIG_NR_DRAM_BANKS; i++) {
-		printf ("Bank #%d: %08lx ", i, gd->bd->bi_dram[i].start);
-		print_size (gd->bd->bi_dram[i].size, "\n");
-	}
-#else
-	ulong size = 0;
-
-	for (i=0; i<CONFIG_NR_DRAM_BANKS; i++) {
-		size += gd->bd->bi_dram[i].size;
-	}
-	puts("DRAM:  ");
-	print_size(size, "\n");
-#endif
-
 	return (0);
 }
 
@@ -187,25 +154,6 @@ static void display_flash_config (ulong size)
 	print_size (size, "\n");
 }
 #endif /* CONFIG_SYS_NO_FLASH */
-
-#if defined(CONFIG_HARD_I2C) || defined(CONFIG_SOFT_I2C)
-static int init_func_i2c (void)
-{
-	puts ("I2C:   ");
-	i2c_init (CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
-	puts ("ready\n");
-	return (0);
-}
-#endif
-
-#if defined(CONFIG_CMD_PCI) || defined (CONFIG_PCI)
-#include <pci.h>
-static int arm_pci_init(void)
-{
-	pci_init();
-	return 0;
-}
-#endif /* CONFIG_CMD_PCI || CONFIG_PCI */
 
 /*
  * Breathe some life into the board...
@@ -257,16 +205,69 @@ init_fnc_t *init_sequence[] = {
 #if defined(CONFIG_DISPLAY_BOARDINFO)
 	checkboard,		/* display board info */
 #endif
-#if defined(CONFIG_HARD_I2C) || defined(CONFIG_SOFT_I2C)
-	init_func_i2c,
-#endif
 	dram_init,		/* configure available RAM banks */
-#if defined(CONFIG_CMD_PCI) || defined (CONFIG_PCI)
-	arm_pci_init,
-#endif
-	display_dram_config,
+	arch_usb_init,
 	NULL,
 };
+
+static void show_boot_env(void)
+{
+	int env_media;
+
+	printf("\nBoot Env on %s\n", env_get_media(&env_media));
+	printf("    Env Offset:          0x%08X\n", CONFIG_ENV_ADDR);
+#ifdef CONFIG_ENV_BACKUP
+	printf("    Backup Env Offset:   0x%08X\n", CONFIG_ENV_BACKUP_ADDR);
+#endif /* CONFIG_ENV_BACKUP */
+	printf("    Env Size:            0x%08X\n", CONFIG_ENV_SIZE);
+	printf("    Env Range:           0x%08X\n", CONFIG_ENV_RANGE);
+
+	/* check if env addr is alignment block size */
+#if defined(CONFIG_GENERIC_SF)
+	if ((env_media == BOOT_MEDIA_SPIFLASH) &&
+	    ((get_spiflash_info()->erasesize - 1) & CONFIG_ENV_OFFSET))
+		printf("*** Warning - Env offset is NOT aligned to SPI Flash "
+		       "block size, environment value is read only.\n\n");
+#endif /* CONFIG_GENERIC_SF */
+
+#if defined(CONFIG_GENERIC_NAND)
+	if (((env_media == BOOT_MEDIA_NAND) || (env_media == BOOT_MEDIA_SPI_NAND)) &&
+	    ((get_nand_info()->erasesize - 1) & CONFIG_ENV_OFFSET))
+		printf("*** Warning - Env offset is NOT aligned to NAND Flash "
+		       "block size, environment value is read only.\n\n");
+#endif /* CONFIG_GENERIC_SF */
+}
+
+static void bootargs_prepare(void)
+{
+#ifdef CONFIG_BOOTARGS_512M
+	{
+		char *bootargs = getenv("bootargs_512M");
+		if (!bootargs)
+			setenv("bootargs_512M", CONFIG_BOOTARGS_512M);
+	}
+#endif /* CONFIG_BOOTARGS_512M */
+
+#ifdef CONFIG_BOOTARGS_1G
+	{
+		char *bootargs = getenv("bootargs_1G");
+		if (!bootargs)
+			setenv("bootargs_1G", CONFIG_BOOTARGS_1G);
+	}
+#endif /* CONFIG_BOOTARGS_1G */
+
+#ifdef CONFIG_BOOTARGS_2G
+	{
+		char *bootargs = getenv("bootargs_2G");
+		if (!bootargs)
+			setenv("bootargs_2G", CONFIG_BOOTARGS_2G);
+	}
+#endif /* CONFIG_BOOTARGS_2G */
+}
+
+#ifndef CONFIG_BOOT_SIMULATE
+#define step(x)
+#endif
 
 void start_armboot (void)
 {
@@ -275,15 +276,26 @@ void start_armboot (void)
 #if defined(CONFIG_VFD) || defined(CONFIG_LCD)
 	unsigned long addr;
 #endif
+	step(81);
+
+#ifdef CONFIG_ARCH_S5
+	/* Initilize reg2 */
+	init_reg2();
+#endif
 
 	/* Pointer is writable since we allocated a register for it */
-	gd = (gd_t*)(_armboot_start - CONFIG_SYS_MALLOC_LEN - sizeof(gd_t));
+	gd = (gd_t*)(_armboot_start - CONFIG_BOOTHEAD_GAP
+		- CONFIG_SYS_MALLOC_LEN - sizeof(gd_t));
 	/* compiler optimization barrier needed for GCC >= 3.4 */
 	__asm__ __volatile__("": : :"memory");
+
+	step(82);
 
 	memset ((void*)gd, 0, sizeof (gd_t));
 	gd->bd = (bd_t*)((char*)gd - sizeof(bd_t));
 	memset (gd->bd, 0, sizeof (bd_t));
+	insert_ddr_layout((unsigned int)gd->bd,
+		(unsigned int)((char *)gd + sizeof(gd_t)), "global data");
 
 	gd->flags |= GD_FLG_RELOC;
 
@@ -296,8 +308,9 @@ void start_armboot (void)
 	}
 
 	/* armboot_start is defined in the board-specific linker script */
-	mem_malloc_init (_armboot_start - CONFIG_SYS_MALLOC_LEN,
-			CONFIG_SYS_MALLOC_LEN);
+	mem_malloc_init (_armboot_start - CONFIG_BOOTHEAD_GAP
+		- CONFIG_SYS_MALLOC_LEN,
+		CONFIG_SYS_MALLOC_LEN);
 
 #ifndef CONFIG_SYS_NO_FLASH
 	/* configure available FLASH banks */
@@ -334,8 +347,7 @@ void start_armboot (void)
 #endif /* CONFIG_LCD */
 
 #if defined(CONFIG_CMD_NAND)
-	puts ("NAND:  ");
-	nand_init();		/* go init the NAND */
+	nand_init();        /* go init the NAND */
 #endif
 
 #if defined(CONFIG_CMD_ONENAND)
@@ -345,6 +357,19 @@ void start_armboot (void)
 #ifdef CONFIG_HAS_DATAFLASH
 	AT91F_DataflashInit();
 	dataflash_print_info();
+#endif
+
+#if defined(CONFIG_CMD_SF)
+	puts("\n");
+	spi_flash_probe(0, 0, 0, 0);
+#endif
+
+#ifdef CONFIG_GENERIC_MMC
+	mmc_flash_init();
+#endif
+
+#if defined(CONFIG_CMD_NAND)
+	nand_rr_param_init();
 #endif
 
 	/* initialize environment */
@@ -381,6 +406,16 @@ void start_armboot (void)
 	/* miscellaneous platform dependent initialisations */
 	misc_init_r ();
 #endif
+
+#ifdef HISFV_PHY_U
+	U_PHY_ADDR = HISFV_PHY_U;
+#endif /* HISFV_PHY_U */
+	U_PHY_ADDR = get_eth_phyaddr(0, U_PHY_ADDR);
+
+#ifdef HISFV_PHY_D
+	D_PHY_ADDR = HISFV_PHY_D;
+#endif /* HISFV_PHY_D */
+	D_PHY_ADDR = get_eth_phyaddr(1, D_PHY_ADDR);
 
 	/* enable exceptions */
 	enable_interrupts ();
@@ -419,11 +454,6 @@ extern void davinci_eth_set_mac_addr (const u_int8_t *addr);
 	board_late_init ();
 #endif
 
-#ifdef CONFIG_GENERIC_MMC
-	puts ("MMC:   ");
-	mmc_initialize (gd->bd);
-#endif
-
 #ifdef CONFIG_BITBANGMII
 	bb_miiphy_init();
 #endif
@@ -436,6 +466,41 @@ extern void davinci_eth_set_mac_addr (const u_int8_t *addr);
 	debug ("Reset Ethernet PHY\n");
 	reset_phy();
 #endif
+#endif
+
+#if defined(CONFIG_SHOW_MEMORY_LAYOUT)
+	show_ddr_layout();
+#endif /* CONFIG_SHOW_MEMORY_LAYOUT */
+
+	reserve_mem_init();
+
+	show_boot_env();
+
+#ifdef CONFIG_PRODUCT_WITH_BOOT
+	product_init();
+#endif
+
+#if defined(CONFIG_BOOTROM_SUPPORT) || defined(CONFIG_BOOTROM_CA_SUPPORT)
+#ifndef CONFIG_SUPPORT_CA_RELEASE
+	extern void download_boot(const int (*handle)(void));
+	download_boot(NULL);
+#endif
+#endif
+
+#ifdef CONFIG_DDR_TRAINING
+	check_ddr_training();
+#endif /* CONFIG_DDR_TRAINING */
+
+	bootargs_prepare();
+
+	printf("\n");
+
+#ifdef CONFIG_PRODUCT_WITH_BOOT
+	fastapp_entry(0, NULL);
+#endif
+
+#if defined(CONFIG_SHOW_RESERVE_MEM_LAYOUT)
+	show_reserve_mem();
 #endif
 	/* main_loop() can return to retry autoboot, if so just run it again. */
 	for (;;) {
@@ -450,3 +515,43 @@ void hang (void)
 	puts ("### ERROR ### Please RESET the board ###\n");
 	for (;;);
 }
+
+#if 0
+/*
+ * this is usb keyboard test code.
+ */
+wait_keybard_input(int c, int timeout)
+{
+	int jx = 0, ix = 0;
+	int chr = -1;
+	extern struct stdio_dev* stdio_get_by_name(char* name);
+	struct stdio_dev* std_dev = NULL;
+
+	usb_stop();
+	printf("start usb ...\n");
+	usb_init();
+	drv_usb_kbd_init();
+	std_dev =  stdio_get_by_name("usbkbd");
+	if (std_dev) {
+		while (ix < 20000) {
+			if (jx++ > 100) {
+				if (!(ix % 100))
+					printf(" \rWait for keyboard CTRL press %d ...",
+					(ix/100));
+				jx = 0;
+				ix++;
+			}
+			if (std_dev->tstc()) {
+				chr = std_dev->getc();
+				printf(" \b%c", chr);
+				if (chr == 0)
+					break;
+			}
+			udelay(10);
+		}
+		printf("\n");
+	}
+}
+
+#endif
+

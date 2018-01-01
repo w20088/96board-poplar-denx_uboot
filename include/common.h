@@ -122,6 +122,16 @@ typedef volatile unsigned char	vu_char;
 #define debug(fmt,args...)
 #define debugX(level,fmt,args...)
 #endif	/* DEBUG */
+/*
+ * Output a debug text when condition "cond" is met. The "cond" should be
+ * computed by a preprocessor in the best case, allowing for the best
+ * optimization.
+ */
+#define debug_cond(cond, fmt, args...)		\
+	do {					\
+		if (cond)			\
+			printf(fmt, ##args);	\
+	} while (0)
 
 #define error(fmt, args...) do {					\
 		printf("ERROR: " fmt "\nat %s:%d/%s()\n",		\
@@ -131,7 +141,7 @@ typedef volatile unsigned char	vu_char;
 #ifndef BUG
 #define BUG() do { \
 	printf("BUG: failure at %s:%d/%s()!\n", __FILE__, __LINE__, __FUNCTION__); \
-	panic("BUG!"); \
+	panic("\r\n"); \
 } while (0)
 #define BUG_ON(condition) do { if (unlikely((condition)!=0)) BUG(); } while(0)
 #endif /* BUG */
@@ -222,6 +232,9 @@ void	print_size(unsigned long long, const char *);
 int	print_buffer (ulong addr, void* data, uint width, uint count, uint linelen);
 
 /* common/main.c */
+#ifdef CONFIG_HISI_SNAPSHOT_BOOT
+int checkout_qbboot(void);
+#endif
 void	main_loop	(void);
 int	run_command	(const char *cmd, int flag);
 int	readline	(const char *const prompt);
@@ -315,8 +328,6 @@ const char *symbol_lookup(unsigned long addr, unsigned long *caddr);
 /* api/api.c */
 void	api_init (void);
 
-/* common/memsize.c */
-long	get_ram_size  (volatile long *, long);
 
 /* $(BOARD)/$(BOARD).c */
 void	reset_phy     (void);
@@ -410,8 +421,6 @@ int	icache_status (void);
 void	icache_enable (void);
 void	icache_disable(void);
 int	dcache_status (void);
-void	dcache_enable (void);
-void	dcache_disable(void);
 void	relocate_code (ulong, gd_t *, ulong) __attribute__ ((noreturn));
 ulong	get_endaddr   (void);
 void	trap_init     (ulong);
@@ -607,11 +616,23 @@ ulong	video_setmem (ulong);
 void	flush_cache   (unsigned long, unsigned long);
 void	flush_dcache_range(unsigned long start, unsigned long stop);
 void	invalidate_dcache_range(unsigned long start, unsigned long stop);
-
+int	mmu_init(unsigned int ttb, unsigned int ddr_start, unsigned int ddr_size);
+void dcache_enable(uint32_t unused);
+void dcache_disable(void);
 
 /* arch/$(ARCH)/lib/ticks.S */
 unsigned long long get_ticks(void);
 void	wait_ticks    (unsigned long);
+unsigned long do_gettime(unsigned long *sec, unsigned short *msec,
+	unsigned short *usec);
+char *do_getstrtime(char buffer[20]);
+
+#ifndef DBG_BUG
+#  define DBG_BUG(_p) do {\
+	printf("%s(%d): [BUG] ", __FILE__, __LINE__); \
+	printf _p; \
+} while (0)
+#endif
 
 /* arch/$(ARCH)/lib/time.c */
 void	__udelay      (unsigned long);
@@ -633,6 +654,7 @@ static inline IPaddr_t getenv_IPaddr (char *var)
 
 /* lib/time.c */
 void	udelay        (unsigned long);
+void mdelay(unsigned long);
 
 /* lib/vsprintf.c */
 ulong	simple_strtoul(const char *cp,char **endp,unsigned int base);
@@ -642,7 +664,11 @@ void	panic(const char *fmt, ...)
 		__attribute__ ((format (__printf__, 1, 2)));
 int	sprintf(char * buf, const char *fmt, ...)
 		__attribute__ ((format (__printf__, 2, 3)));
+int snprintf(char *str, size_t size, const char *format, ...);
+
 int	vsprintf(char *buf, const char *fmt, va_list args);
+int vsnrprintf(char *str, size_t size, const char *format, va_list ap);
+char *ultohstr(unsigned long long size);
 
 /* lib/strmhz.c */
 char *	strmhz(char *buf, long hz);
@@ -671,9 +697,23 @@ int	tstc(void);
 
 /* stdout */
 void	putc(const char c);
+
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 void	puts(const char *s);
 void	printf(const char *fmt, ...)
 		__attribute__ ((format (__printf__, 1, 2)));
+#else
+#define puts(fmt)\
+do{\
+	__asm__ __volatile__("mov\tr0,r0\t@ nop\n\t");\
+}while(0)
+
+#define printf(fmt, ...)\
+do{\
+	__asm__ __volatile__("mov\tr0,r0\t@ nop\n\t");\
+}while(0)
+#endif
+
 void	vprintf(const char *fmt, va_list args);
 
 /* stderr */
@@ -695,6 +735,11 @@ void	fputs(int file, const char *s);
 void	fputc(int file, const char c);
 int	ftstc(int file);
 int	fgetc(int file);
+
+void add_shutdown(void (*shutdown)(void));
+void do_shutdown(void);
+
+void set_param_data(const char *name, const char *buf, int buflen);
 
 /*
  * CONSOLE multiplexing.
@@ -721,8 +766,34 @@ int cpu_disable(int nr);
 int cpu_release(int nr, int argc, char *argv[]);
 #endif
 
+#define BOOT_MEDIA_UNKNOWN                                  (0)
+#define BOOT_MEDIA_DDR                                      (1)
+#define BOOT_MEDIA_NAND                                     (2)
+#define BOOT_MEDIA_SPIFLASH                                 (3)
+#define BOOT_MEDIA_SPI_NAND                                 (4)
+#define BOOT_MEDIA_EMMC                                     (5)
+#define BOOT_MEDIA_SD                                       (6)
+void preset_ddr_size(unsigned int size);
+unsigned int get_ddr_size(void);
+extern unsigned long timer_clock;
+#define CONFIG_SYS_HZ           (timer_clock)
+
+int get_ca_type(void);
+
+#ifndef CONFIG_SUPPORT_CA_RELEASE
+extern void uart_early_puts(const char *s);
+extern void uart_early_put_hex(int hex);
+extern void uart_early_putc(int chr);
+#else
+#define uart_early_puts(_s)
+#define uart_early_put_hex(_h)
+#define uart_early_putc(_c)
+#endif
+
 #endif /* __ASSEMBLY__ */
 
+#define U_BOOT_VER(a,b,c)       (((a) << 16) + ((b) << 8) + (c))
+#define U_BOOT_VERSION_CODE     U_BOOT_VER(2010,6,0)
 /* Put only stuff here that the assembler can digest */
 
 #ifdef CONFIG_POST
@@ -743,5 +814,86 @@ int cpu_release(int nr, int argc, char *argv[]);
 
 #define ALIGN(x,a)		__ALIGN_MASK((x),(typeof(x))(a)-1)
 #define __ALIGN_MASK(x,mask)	(((x)+(mask))&~(mask))
+
+/*
+ * ARCH_DMA_MINALIGN is defined in asm/cache.h for each architecture.  It
+ * is used to align DMA buffers.
+ */
+#ifndef __ASSEMBLY__
+#include <asm/cache.h>
+#endif
+
+/*
+ * The ALLOC_CACHE_ALIGN_BUFFER macro is used to allocate a buffer on the
+ * stack that meets the minimum architecture alignment requirements for DMA.
+ * Such a buffer is useful for DMA operations where flushing and invalidating
+ * the cache before and after a read and/or write operation is required for
+ * correct operations.
+ *
+ * When called the macro creates an array on the stack that is sized such
+ * that:
+ *
+ * 1) The beginning of the array can be advanced enough to be aligned.
+ *
+ * 2) The size of the aligned portion of the array is a multiple of the minimum
+ *    architecture alignment required for DMA.
+ *
+ * 3) The aligned portion contains enough space for the original number of
+ *    elements requested.
+ *
+ * The macro then creates a pointer to the aligned portion of this array and
+ * assigns to the pointer the address of the first element in the aligned
+ * portion of the array.
+ *
+ * Calling the macro as:
+ *
+ *     ALLOC_CACHE_ALIGN_BUFFER(uint32_t, buffer, 1024);
+ *
+ * Will result in something similar to saying:
+ *
+ *     uint32_t    buffer[1024];
+ *
+ * The following differences exist:
+ *
+ * 1) The resulting buffer is guaranteed to be aligned to the value of
+ *    ARCH_DMA_MINALIGN.
+ *
+ * 2) The buffer variable created by the macro is a pointer to the specified
+ *    type, and NOT an array of the specified type.  This can be very important
+ *    if you want the address of the buffer, which you probably do, to pass it
+ *    to the DMA hardware.  The value of &buffer is different in the two cases.
+ *    In the macro case it will be the address of the pointer, not the address
+ *    of the space reserved for the buffer.  However, in the second case it
+ *    would be the address of the buffer.  So if you are replacing hard coded
+ *    stack buffers with this macro you need to make sure you remove the & from
+ *    the locations where you are taking the address of the buffer.
+ *
+ * Note that the size parameter is the number of array elements to allocate,
+ * not the number of bytes.
+ *
+ * This macro can not be used outside of function scope, or for the creation
+ * of a function scoped static buffer.  It can not be used to create a cache
+ * line aligned global buffer.
+ */
+#define ALLOC_ALIGN_BUFFER(type, name, size, align)			\
+	char __##name[ROUND(size * sizeof(type), align) + (align - 1)];	\
+									\
+	type *name = (type *) ALIGN((uintptr_t)__##name, align)
+#define ALLOC_CACHE_ALIGN_BUFFER(type, name, size)			\
+	ALLOC_ALIGN_BUFFER(type, name, size, ARCH_DMA_MINALIGN)
+
+/*
+ * DEFINE_CACHE_ALIGN_BUFFER() is similar to ALLOC_CACHE_ALIGN_BUFFER, but it's
+ * purpose is to allow allocating aligned buffers outside of function scope.
+ * Usage of this macro shall be avoided or used with extreme care!
+ */
+#define DEFINE_ALIGN_BUFFER(type, name, size, align)			\
+	static char __##name[roundup(size * sizeof(type), align)]	\
+			__attribute__((aligned(align)));				\
+									\
+	static type *name = (type *)__##name
+#define DEFINE_CACHE_ALIGN_BUFFER(type, name, size)			\
+	DEFINE_ALIGN_BUFFER(type, name, size, ARCH_DMA_MINALIGN)
+	
 
 #endif	/* __COMMON_H_ */

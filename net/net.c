@@ -104,6 +104,7 @@ DECLARE_GLOBAL_DATA_PTR;
 # define ARP_TIMEOUT		CONFIG_ARP_TIMEOUT
 #endif
 
+#define ARP_FREQ_TIMEOUT	400000UL
 
 #ifndef	CONFIG_NET_RETRY_COUNT
 # define ARP_TIMEOUT_COUNT	5	/* # of timeouts before giving up  */
@@ -206,6 +207,7 @@ uchar	       *NetArpWaitTxPacket;	/* THE transmit packet			*/
 int		NetArpWaitTxPacketSize;
 uchar		NetArpWaitPacketBuf[PKTSIZE_ALIGN + PKTALIGN];
 ulong		NetArpWaitTimerStart;
+ulong		NetArpFreqWaitTimerStart;
 int		NetArpWaitTry;
 
 void ArpRequest (void)
@@ -272,6 +274,39 @@ void ArpTimeoutCheck(void)
 			ArpRequest();
 		}
 	}
+}
+
+void ArpSendReqFreq(void)
+{
+	ulong t;
+	volatile uchar *pkt;
+	ARP_t *arp;
+
+	if (memcmp(NetServerEther, NetEtherNullAddr, 6) == 0)
+		return;
+
+	t = get_timer(0);
+
+	if ((t - NetArpFreqWaitTimerStart) < ARP_FREQ_TIMEOUT)
+		return;
+
+	NetArpFreqWaitTimerStart = t;
+
+	pkt = NetTxPacket;
+	pkt += NetSetEther (pkt, NetServerEther, PROT_ARP);
+
+	arp = (ARP_t *) pkt;
+	arp->ar_hrd = htons (ARP_ETHER);
+	arp->ar_pro = htons (PROT_IP);
+	arp->ar_hln = 6;
+	arp->ar_pln = 4;
+	arp->ar_op = htons (ARPOP_REQUEST);
+
+	memcpy (&arp->ar_data[0], NetOurEther, 6);		/* source ET addr	*/
+	NetWriteIP ((uchar *) & arp->ar_data[6], NetOurIP);	/* source IP addr	*/
+	memcpy (&arp->ar_data[10], NetServerEther, 6);		/* dest ET addr	*/
+	NetWriteIP ((uchar *) & arp->ar_data[16], NetServerIP); /* dest IP addr	*/
+	(void) eth_send (NetTxPacket, (pkt - NetTxPacket) + ARP_HDR_SIZE);
 }
 
 static void
@@ -485,6 +520,7 @@ restart:
 		}
 
 		ArpTimeoutCheck();
+		ArpSendReqFreq();
 
 		/*
 		 *	Check for a timeout, and run the timeout handler
@@ -670,6 +706,7 @@ NetSendUDPPacket(uchar *ether, IPaddr_t dest, int dport, int sport, int len)
 		/* and do the ARP request */
 		NetArpWaitTry = 1;
 		NetArpWaitTimerStart = get_timer(0);
+		NetArpFreqWaitTimerStart = get_timer(0);
 		ArpRequest();
 		return 1;	/* waiting */
 	}
@@ -765,7 +802,7 @@ static void PingStart(void)
 #if defined(CONFIG_NET_MULTI)
 	printf ("Using %s device\n", eth_get_name());
 #endif	/* CONFIG_NET_MULTI */
-	NetSetTimeout (10000UL, PingTimeout);
+	NetSetTimeout (10000000UL, PingTimeout);/*FIXME*/
 	NetSetHandler (PingHandler);
 
 	PingSend();

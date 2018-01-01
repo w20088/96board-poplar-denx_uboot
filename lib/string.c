@@ -19,7 +19,7 @@
 #include <linux/string.h>
 #include <linux/ctype.h>
 #include <malloc.h>
-
+#include <config.h>
 
 #if 0 /* not used - was: #ifndef __HAVE_ARCH_STRNICMP */
 /**
@@ -56,6 +56,7 @@ int strnicmp(const char *s1, const char *s2, size_t len)
 
 char * ___strtok;
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 #ifndef __HAVE_ARCH_STRCPY
 /**
  * strcpy - Copy a %NUL terminated string
@@ -70,6 +71,7 @@ char * strcpy(char * dest,const char *src)
 		/* nothing */;
 	return tmp;
 }
+#endif
 #endif
 
 #ifndef __HAVE_ARCH_STRNCPY
@@ -94,6 +96,7 @@ char * strncpy(char * dest,const char *src,size_t count)
 }
 #endif
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 #ifndef __HAVE_ARCH_STRCAT
 /**
  * strcat - Append one %NUL-terminated string to another
@@ -111,6 +114,7 @@ char * strcat(char * dest, const char * src)
 
 	return tmp;
 }
+#endif
 #endif
 
 #ifndef __HAVE_ARCH_STRNCAT
@@ -142,6 +146,7 @@ char * strncat(char *dest, const char *src, size_t count)
 }
 #endif
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 #ifndef __HAVE_ARCH_STRCMP
 /**
  * strcmp - Compare two strings
@@ -159,6 +164,7 @@ int strcmp(const char * cs,const char * ct)
 
 	return __res;
 }
+#endif
 #endif
 
 #ifndef __HAVE_ARCH_STRNCMP
@@ -255,7 +261,8 @@ char * strdup(const char *s)
 		return NULL;
 	}
 
-	strcpy (new, s);
+	strncpy (new, s, strlen(s) + 1);
+	new[strlen(s)] = '\0';
 	return new;
 }
 #endif

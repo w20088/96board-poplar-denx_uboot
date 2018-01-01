@@ -113,5 +113,6 @@ void  xyzModem_stream_close(int *err);
 void  xyzModem_stream_terminate(bool method, int (*getc)(void));
 int   xyzModem_stream_read(char *buf, int size, int *err);
 char *xyzModem_error(int err);
+int   xyzModem_stream_write(ulong src,long size);
 
 #endif /* _XYZMODEM_H_ */

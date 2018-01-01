@@ -74,7 +74,9 @@ static void drv_system_init (void)
 
 	memset (&dev, 0, sizeof (dev));
 
-	strcpy (dev.name, "serial");
+	strncpy (dev.name, "serial", sizeof(dev.name));
+	dev.name[sizeof(dev.name) - 1] = '\0';
+
 	dev.flags = DEV_FLAGS_OUTPUT | DEV_FLAGS_INPUT | DEV_FLAGS_SYSTEM;
 #ifdef CONFIG_SERIAL_SOFTWARE_FIFO
 	dev.putc = serial_buffered_putc;
@@ -93,7 +95,9 @@ static void drv_system_init (void)
 #ifdef CONFIG_SYS_DEVICE_NULLDEV
 	memset (&dev, 0, sizeof (dev));
 
-	strcpy (dev.name, "nulldev");
+	strncpy (dev.name, "nulldev", sizeof(dev.name));
+	dev.name[sizeof(dev.name) - 1] = '\0';
+
 	dev.flags = DEV_FLAGS_OUTPUT | DEV_FLAGS_INPUT | DEV_FLAGS_SYSTEM;
 	dev.putc = nulldev_putc;
 	dev.puts = nulldev_puts;
@@ -123,7 +127,7 @@ struct stdio_dev* stdio_get_by_name(char* name)
 
 	list_for_each(pos, &(devs.list)) {
 		dev = list_entry(pos, struct stdio_dev, list);
-		if(strcmp(dev->name, name) == 0)
+		if(strncmp(dev->name, name, strlen(dev->name) + 1) == 0)
 			return dev;
 	}
 
@@ -191,7 +195,7 @@ int stdio_deregister(char *devname)
 	list_for_each(pos, &(devs.list)) {
 		dev = list_entry(pos, struct stdio_dev, list);
 		for (l=0 ; l< MAX_FILES; l++) {
-			if(strcmp(dev->name, temp_names[l]) == 0)
+			if(strncmp(dev->name, temp_names[l], strlen(dev->name) + 1) == 0)
 				stdio_devices[l] = dev;
 		}
 	}

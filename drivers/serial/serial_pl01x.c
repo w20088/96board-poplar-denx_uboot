@@ -49,6 +49,10 @@ static void pl01x_putc (int portnum, char c);
 static int pl01x_getc (int portnum);
 static int pl01x_tstc (int portnum);
 
+#ifdef CONFIG_USB_DEVICE
+extern int usb_out_open;
+#endif
+
 #ifdef CONFIG_PL010_SERIAL
 
 int serial_init (void)
@@ -156,6 +160,8 @@ int serial_init (void)
 
 #endif /* CONFIG_PL011_SERIAL */
 
+#ifndef CONFIG_SERIAL_NO_DISPLAY
+
 void serial_putc (const char c)
 {
 	if (c == '\n')
@@ -164,8 +170,17 @@ void serial_putc (const char c)
 	pl01x_putc (CONSOLE_PORT, c);
 }
 
+void serial_putc_raw(const char c)
+{
+	pl01x_putc (CONSOLE_PORT, c);
+}
+
 void serial_puts (const char *s)
 {
+#ifdef CONFIG_USB_DEVICE
+	if(usb_out_open)
+		tx_status(s);
+#endif	
 	while (*s) {
 		serial_putc (*s++);
 	}
@@ -184,6 +199,30 @@ int serial_tstc (void)
 void serial_setbrg (void)
 {
 }
+
+#else /* CONFIG_SERIAL_NO_DISPLAY */
+
+void serial_putc (const char c)
+{
+}
+void serial_putc_raw(const char c)
+{
+}
+void serial_puts (const char *s)
+{
+}
+int serial_getc (void)
+{
+	return 0;
+}
+int serial_tstc (void)
+{
+	return 0;
+}
+void serial_setbrg (void)
+{
+}
+#endif /* CONFIG_SERIAL_NO_DISPLAY */
 
 static void pl01x_putc (int portnum, char c)
 {

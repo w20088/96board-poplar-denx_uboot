@@ -23,15 +23,20 @@
 
 include $(TOPDIR)/config.mk
 
+
 LIB	:= $(obj)libnand.a
 
 ifdef CONFIG_CMD_NAND
-COBJS-y += nand.o
+COBJS-y += nand.o hinfc_gen.o hinfc_init.o nand_spl_ids.o
 COBJS-y += nand_base.o
 COBJS-y += nand_bbt.o
 COBJS-y += nand_ecc.o
 COBJS-y += nand_ids.o
 COBJS-y += nand_util.o
+
+ifdef CONFIG_NAND_FLASH_HISFC400
+COBJS-y += hisfc_spl_ids.o
+endif
 
 COBJS-$(CONFIG_NAND_ATMEL) += atmel_nand.o
 COBJS-$(CONFIG_DRIVER_NAND_BFIN) += bfin_nand.o
@@ -50,7 +55,57 @@ COBJS-$(CONFIG_NAND_S3C64XX) += s3c64xx.o
 COBJS-$(CONFIG_NAND_SPEAR) += spr_nand.o
 COBJS-$(CONFIG_NAND_OMAP_GPMC) += omap_gpmc.o
 COBJS-$(CONFIG_NAND_PLAT) += nand_plat.o
+COBJS-$(CONFIG_NAND_GODBOX_V1)  += hinfc300.o
+COBJS-$(CONFIG_NAND_FLASH_HINFC301)  += hinfc301.o
+
+COBJS-$(CONFIG_NAND_FLASH_HINFC504)  += hinfc504.o hinfc504_gen.o \
+	hinfc504_read_retry_hynix_bg_cdie.o \
+	hinfc504_read_retry_hynix_bg_bdie.o \
+	hinfc504_read_retry_hynix_cg_adie.o \
+	hinfc504_read_retry_micron.o  \
+	hinfc504_read_retry_samsung.o \
+	hinfc504_read_retry_toshiba_24nm.o \
+	hinfc504_read_retry_toshiba_19nm.o
+
+COBJS-$(CONFIG_NAND_FLASH_HINFC610)  += hinfc610.o hinfc610_gen.o \
+	hinfc610_read_retry_hynix_bg_cdie.o \
+	hinfc610_read_retry_hynix_bg_bdie.o \
+	hinfc610_read_retry_hynix_cg_adie.o \
+	hinfc610_read_retry_micron.o  \
+	hinfc610_read_retry_samsung.o \
+	hinfc610_read_retry_toshiba_24nm.o \
+	hinfc610_read_retry_toshiba_19nm.o \
+	hinfc610_read_retry.o \
+	hinfc610_ecc_info.o \
+	hinfc610_sync.o \
+	hinfc620_gen.o \
+	hinfc610_sync_onfi_23.o \
+	hinfc610_sync_toggle.o \
+	hinfc610_rw_latch.o
 endif
+
+################################################################################
+ifdef  CONFIG_ARCH_HI3716MV310
+COBJS-y += hinfc610_rw_latch_hi3716mv310.o 
+endif
+
+ifdef  CONFIG_ARCH_HI3798MX
+COBJS-y += hinfc610_rw_latch_hi3798mv100.o
+endif
+
+ifdef  CONFIG_ARCH_S40
+COBJS-y += hinfc610_rw_latch_s40.o
+endif
+
+ifdef  CONFIG_ARCH_S5
+COBJS-y += hinfc610_rw_latch_s40.o
+endif
+
+ifdef  CONFIG_ARCH_HIFONE
+COBJS-y += hinfc610_rw_latch_hifone.o
+endif
+
+################################################################################
 
 COBJS	:= $(COBJS-y)
 SRCS	:= $(COBJS:.o=.c)

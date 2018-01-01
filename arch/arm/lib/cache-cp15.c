@@ -23,98 +23,53 @@
 
 #include <common.h>
 #include <asm/system.h>
+#include <asm/sizes.h>
+#include <asm/arch/platform.h>
 
-#if !(defined(CONFIG_SYS_NO_ICACHE) && defined(CONFIG_SYS_NO_DCACHE))
-static void cp_delay (void)
+extern void mmu_pagedir_init(unsigned int);
+extern void mmu_pagedir_cached_range(unsigned int, unsigned int, unsigned int);
+extern void mmu_startup(unsigned int);
+extern void dcache_start(void);
+extern void dcache_stop(void);
+
+static unsigned int transform_table_base = 1;
+
+int mmu_init(unsigned int ttb, unsigned int ddr_start, unsigned int ddr_size)
 {
-	volatile int i;
+	if (ttb < ddr_start || ttb > (ddr_start + ddr_size)) {
+		DBG_BUG(("transform table base address(0x%08X)"
+		         " out of ddr range[0x%08X, 0x%08X].\n",
+		         ttb, ddr_start, (ddr_start + ddr_size)));
+		return 0;
+	}
+	transform_table_base = ttb;
 
-	/* copro seems to need some delay between reading and writing */
-	for (i = 0; i < 100; i++)
-		nop();
+	/* init page dir table in main mem 0- 16k */
+	mmu_pagedir_init(transform_table_base);
+
+	/* init cache page flag */
+	mmu_pagedir_cached_range(transform_table_base, ddr_start, ddr_size);
+
+	/* page table is 16K */
+	return (0x4000);
 }
 
-/* cache_bit must be either CR_I or CR_C */
-static void cache_enable(uint32_t cache_bit)
+/*
+ * the parameter 'ddrsize' don't care, it is only used for compatibility the
+ * old source.
+ */
+void dcache_enable(uint32_t unused)
 {
-	uint32_t reg;
-
-	reg = get_cr();	/* get control reg. */
-	cp_delay();
-	set_cr(reg | cache_bit);
-}
-
-/* cache_bit must be either CR_I or CR_C */
-static void cache_disable(uint32_t cache_bit)
-{
-	uint32_t reg;
-
-	reg = get_cr();
-	cp_delay();
-	set_cr(reg & ~cache_bit);
-}
-#endif
-
-#ifdef CONFIG_SYS_NO_ICACHE
-void icache_enable (void)
-{
-	return;
-}
-
-void icache_disable (void)
-{
-	return;
-}
-
-int icache_status (void)
-{
-	return 0;					/* always off */
-}
-#else
-void icache_enable(void)
-{
-	cache_enable(CR_I);
-}
-
-void icache_disable(void)
-{
-	cache_disable(CR_I);
-}
-
-int icache_status(void)
-{
-	return (get_cr() & CR_I) != 0;
-}
-#endif
-
-#ifdef CONFIG_SYS_NO_DCACHE
-void dcache_enable (void)
-{
-	return;
-}
-
-void dcache_disable (void)
-{
-	return;
-}
-
-int dcache_status (void)
-{
-	return 0;					/* always off */
-}
-#else
-void dcache_enable(void)
-{
-	cache_enable(CR_C);
+	if (transform_table_base == 1) {
+		DBG_BUG(("mmu has not be initialized.\n"));
+		return;
+	}
+	/* enable mmu */
+	mmu_startup(transform_table_base);
+	dcache_start();
 }
 
 void dcache_disable(void)
 {
-	cache_disable(CR_C);
+	dcache_stop();
 }
-
-int dcache_status(void)
-{
-	return (get_cr() & CR_C) != 0;
-}
-#endif

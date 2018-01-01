@@ -478,7 +478,7 @@ int do_mem_base (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 
 int do_mem_loop (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
-	ulong	addr, length, i, junk;
+	ulong	addr, length, i;
 	int	size;
 	volatile uint	*longp;
 	volatile ushort *shortp;
@@ -527,7 +527,7 @@ int do_mem_loop (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 			longp = (uint *)addr;
 			i = length;
 			while (i-- > 0)
-				junk = *longp++;
+				*longp++;
 		}
 	}
 	if (size == 2) {
@@ -535,14 +535,14 @@ int do_mem_loop (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 			shortp = (ushort *)addr;
 			i = length;
 			while (i-- > 0)
-				junk = *shortp++;
+				*shortp++;
 		}
 	}
 	for (;;) {
 		cp = (u_char *)addr;
 		i = length;
 		while (i-- > 0)
-			junk = *cp++;
+			*cp++;
 	}
 }
 
@@ -1105,10 +1105,16 @@ int do_mem_crc (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 
 	length = simple_strtoul (argv[2], NULL, 16);
 
+	/* DDR should larger than 16M */
+	mmu_init((MEM_BASE_DDR + 0x4000), MEM_BASE_DDR, get_ddr_size());
+	dcache_enable(0);
+	
 	crc = crc32 (0, (const uchar *) addr, length);
 
 	printf ("CRC32 for %08lx ... %08lx ==> %08lx\n",
 			addr, addr + length - 1, crc);
+
+	dcache_disable();
 
 	if (argc > 3) {
 		ptr = (ulong *) simple_strtoul (argv[3], NULL, 16);
@@ -1151,7 +1157,13 @@ int do_mem_crc (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	addr += base_address;
 	length = simple_strtoul(*av++, NULL, 16);
 
+	/* DDR should larger than 16M */
+	mmu_init((MEM_BASE_DDR + 0x4000), MEM_BASE_DDR, get_ddr_size());
+	dcache_enable(0);
+	
 	crc = crc32(0, (const uchar *) addr, length);
+
+	dcache_disable();
 
 	if (!verify) {
 		printf ("CRC32 for %08lx ... %08lx ==> %08lx\n",
@@ -1229,6 +1241,7 @@ int do_unzip ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	unsigned long src, dst;
 	unsigned long src_len = ~0UL, dst_len = ~0UL;
+	char buf[32];
 
 	switch (argc) {
 		case 4:
@@ -1243,10 +1256,23 @@ int do_unzip ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 			return 1;
 	}
 
-	return !!gunzip((void *) dst, dst_len, (void *) src, &src_len);
+	/* DDR should larger than 16M */
+	mmu_init((MEM_BASE_DDR + 0x4000), MEM_BASE_DDR, get_ddr_size());
+	dcache_enable(0);
+
+	if (gunzip((void *) dst, dst_len, (void *) src, &src_len) != 0) {
+		dcache_disable();
+		return 1;
+	}
+
+	printf("Uncompressed size: %ld = 0x%lX\n", src_len, src_len);
+	snprintf(buf, sizeof(buf), "%lX", src_len);
+	setenv("filesize", buf);
+
+	dcache_disable();
+	return 0;
 }
 #endif /* CONFIG_CMD_UNZIP */
-
 
 /**************************************************/
 U_BOOT_CMD(

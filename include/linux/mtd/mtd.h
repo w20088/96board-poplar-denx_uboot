@@ -55,6 +55,7 @@ struct erase_info {
 	u_long priv;
 	u_char state;
 	struct erase_info *next;
+	int scrub;
 };
 
 struct mtd_erase_region_info {
@@ -131,6 +132,7 @@ struct mtd_info {
 
 	u_int32_t oobsize;   /* Amount of OOB data per block (e.g. 16) */
 	u_int32_t oobavail;  /* Available OOB bytes per block */
+	u_int32_t oobused;   /* yaffs2 use oob size, it smaller than oobsize */
 
 	/* Kernel-only stuff starts here. */
 	const char *name;
@@ -192,15 +194,6 @@ struct mtd_info {
 	int (*write_user_prot_reg) (struct mtd_info *mtd, loff_t from, size_t len, size_t *retlen, u_char *buf);
 	int (*lock_user_prot_reg) (struct mtd_info *mtd, loff_t from, size_t len);
 
-/* XXX U-BOOT XXX */
-#if 0
-	/* kvec-based read/write methods.
-	   NB: The 'count' parameter is the number of _vectors_, each of
-	   which contains an (ofs, len) tuple.
-	*/
-	int (*writev) (struct mtd_info *mtd, const struct kvec *vecs, unsigned long count, loff_t to, size_t *retlen);
-#endif
-
 	/* Sync */
 	void (*sync) (struct mtd_info *mtd);
 
@@ -215,11 +208,6 @@ struct mtd_info {
 	/* Bad block management functions */
 	int (*block_isbad) (struct mtd_info *mtd, loff_t ofs);
 	int (*block_markbad) (struct mtd_info *mtd, loff_t ofs);
-
-/* XXX U-BOOT XXX */
-#if 0
-	struct notifier_block reboot_notifier;  /* default mode before reboot */
-#endif
 
 	/* ECC status information */
 	struct mtd_ecc_stats ecc_stats;
@@ -238,6 +226,32 @@ struct mtd_info {
 	int (*get_device) (struct mtd_info *mtd);
 	void (*put_device) (struct mtd_info *mtd);
 };
+
+/*
+ *  this interface for iTools and application used.
+ */
+struct mtd_info_ex
+{
+	u_char    type;      /* chip type  MTD_NORFLASH / MTD_NANDFLASH */
+	uint64_t  chipsize;  /* total size of the nand/spi chip */
+	u_int32_t erasesize;
+	u_int32_t pagesize;
+	u_int32_t numchips;  /* number of nand chips */
+
+	u_int32_t oobsize;
+	u_int32_t oobused;
+	u_int32_t addrcycle;
+	u_int32_t ecctype;
+
+	u_char    ids[8];
+	u_int32_t id_length;
+	char      name[16]; /* chip names */
+	int hostver; /* host controller version */
+};
+
+extern struct mtd_info_ex * get_nand_info(void);
+
+extern struct mtd_info_ex * get_spiflash_info(void);
 
 static inline uint32_t mtd_div_by_eb(uint64_t sz, struct mtd_info *mtd)
 {
@@ -259,24 +273,6 @@ extern struct mtd_info *get_mtd_device(struct mtd_info *mtd, int num);
 extern struct mtd_info *get_mtd_device_nm(const char *name);
 
 extern void put_mtd_device(struct mtd_info *mtd);
-
-/* XXX U-BOOT XXX */
-#if 0
-struct mtd_notifier {
-	void (*add)(struct mtd_info *mtd);
-	void (*remove)(struct mtd_info *mtd);
-	struct list_head list;
-};
-
-extern void register_mtd_user (struct mtd_notifier *new);
-extern int unregister_mtd_user (struct mtd_notifier *old);
-
-int default_mtd_writev(struct mtd_info *mtd, const struct kvec *vecs,
-		       unsigned long count, loff_t to, size_t *retlen);
-
-int default_mtd_readv(struct mtd_info *mtd, struct kvec *vecs,
-		      unsigned long count, loff_t from, size_t *retlen);
-#endif
 
 #ifdef CONFIG_MTD_PARTITIONS
 void mtd_erase_callback(struct erase_info *instr);

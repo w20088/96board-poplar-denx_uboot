@@ -178,9 +178,11 @@ ifneq ($(OBJTREE),$(SRCTREE))
 CPPFLAGS += -I$(OBJTREE)/include2 -I$(OBJTREE)/include
 endif
 
-CPPFLAGS += -I$(TOPDIR)/include
+CPPFLAGS += -I$(TOPDIR)/include -I$(TOPDIR)
 CPPFLAGS += -fno-builtin -ffreestanding -nostdinc	\
-	-isystem $(gccincdir) -pipe $(PLATFORM_CPPFLAGS)
+	-isystem $(gccincdir) -pipe $(PLATFORM_CPPFLAGS) $(MKFLAGS)
+
+#########################################################################
 
 ifdef BUILD_TAG
 CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes \

@@ -73,11 +73,14 @@ static const image_header_t* image_get_ramdisk (ulong rd_addr, uint8_t arch,
 #include <time.h>
 #include <image.h>
 #endif /* !USE_HOSTCC*/
+#include <malloc.h>
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 static table_entry_t uimage_arch[] = {
 	{	IH_ARCH_INVALID,	NULL,		"Invalid ARCH",	},
 	{	IH_ARCH_ALPHA,		"alpha",	"Alpha",	},
 	{	IH_ARCH_ARM,		"arm",		"ARM",		},
+	{	IH_ARCH_ARM64,		"arm64",	"AArch64",	},
 	{	IH_ARCH_I386,		"x86",		"Intel x86",	},
 	{	IH_ARCH_IA64,		"ia64",		"IA64",		},
 	{	IH_ARCH_M68K,		"m68k",		"M68K",		},
@@ -152,6 +155,47 @@ static table_entry_t uimage_comp[] = {
 	{	-1,		"",		"",			},
 };
 
+#else
+static table_entry_t uimage_arch[] = {
+	{	IH_ARCH_INVALID,	NULL,		" ",	},
+	{	IH_ARCH_ARM,		"arm",		" ",		},
+	{	IH_ARCH_ARM64,		"arm64",	"AArch64",	},
+	{	-1,			"",		"",		},
+};
+
+static table_entry_t uimage_os[] = {
+	{	IH_OS_INVALID,	NULL,		" ",		},
+	{	IH_OS_LINUX,	"linux",	" ",		},
+	{	IH_OS_RTEMS,	"rtems",	" ",		},
+	{	IH_OS_U_BOOT,	"u-boot",	" ",		},
+#if defined(CONFIG_INTEGRITY) || defined(USE_HOSTCC)
+	{	IH_OS_INTEGRITY,"integrity",	" ",		},
+#endif
+	{	-1,		"",		"",			},
+};
+
+static table_entry_t uimage_type[] = {
+	{	IH_TYPE_INVALID,    NULL,	  " ",	},
+	{	IH_TYPE_FILESYSTEM, "filesystem", " ",	},
+	{	IH_TYPE_FIRMWARE,   "firmware",	  " ",		},
+	{	IH_TYPE_KERNEL,	    "kernel",	  "  ",	},
+	{	IH_TYPE_MULTI,	    "multi",	  " ",	},
+	{	IH_TYPE_RAMDISK,    "ramdisk",	  " ",	},
+	{	IH_TYPE_SCRIPT,     "script",	  " ",		},
+	{	IH_TYPE_STANDALONE, "standalone", " ", },
+	{	IH_TYPE_FLATDT,     "flat_dt",    " ",	},
+	{	-1,		    "",		  "",			},
+};
+
+static table_entry_t uimage_comp[] = {
+	{	IH_COMP_NONE,	"none",		" ",		},
+	{	IH_COMP_BZIP2,	"bzip2",	"  ",	},
+	{	IH_COMP_GZIP,	"gzip",		"  ",	},
+	{	IH_COMP_LZMA,	"lzma",		"  ",	},
+	{	IH_COMP_LZO,	"lzo",		"  ",	},
+	{	-1,		"",		"",			},
+};
+#endif
 uint32_t crc32 (uint32_t, const unsigned char *, uint);
 uint32_t crc32_wd (uint32_t, const unsigned char *, uint, uint);
 #if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
@@ -267,6 +311,7 @@ void image_multi_getimg (const image_header_t *hdr, ulong idx,
 	}
 }
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 static void image_print_type (const image_header_t *hdr)
 {
 	const char *os, *arch, *type, *comp;
@@ -278,7 +323,10 @@ static void image_print_type (const image_header_t *hdr)
 
 	printf ("%s %s %s (%s)\n", arch, os, type, comp);
 }
-
+#else
+static void image_print_type (const image_header_t *hdr)
+{}
+#endif
 /**
  * image_print_contents - prints out the contents of the legacy format image
  * @ptr: pointer to the legacy format image header
@@ -522,6 +570,7 @@ char *get_table_entry_name (table_entry_t *table, char *msg, int id)
 	return (msg);
 }
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 const char *genimg_get_os_name (uint8_t os)
 {
 	return (get_table_entry_name (uimage_os, "Unknown OS", os));
@@ -541,6 +590,27 @@ const char *genimg_get_comp_name (uint8_t comp)
 {
 	return (get_table_entry_name (uimage_comp, "Unknown Compression", comp));
 }
+#else
+const char *genimg_get_os_name (uint8_t os)
+{
+	return NULL;
+}
+
+const char *genimg_get_arch_name (uint8_t arch)
+{
+	return NULL;
+}
+
+const char *genimg_get_type_name (uint8_t type)
+{
+	return NULL;
+}
+
+const char *genimg_get_comp_name (uint8_t comp)
+{
+	return NULL;
+}
+#endif
 
 /**
  * get_table_entry_id - translate short entry name to id
@@ -579,9 +649,9 @@ int get_table_entry_id (table_entry_t *table,
 #else
 	for (t = table; t->id >= 0; ++t) {
 #ifdef CONFIG_RELOC_FIXUP_WORKS
-		if (t->sname && strcmp(t->sname, name) == 0)
+		if (t->sname && strncmp(t->sname, name, strlen(t->sname) + 1) == 0)
 #else
-		if (t->sname && strcmp(t->sname + gd->reloc_off, name) == 0)
+		if (t->sname && strncmp(t->sname + gd->reloc_off, name, strlen(name) + 1) == 0)
 #endif
 			return (t->id);
 	}
@@ -780,7 +850,7 @@ int boot_get_ramdisk (int argc, char *argv[], bootm_headers_t *images,
 	 * Look for a '-' which indicates to ignore the
 	 * ramdisk argument
 	 */
-	if ((argc >= 3) && (strcmp(argv[2], "-") ==  0)) {
+	if ((argc >= 3) && (strncmp(argv[2], "-", sizeof("-")) ==  0)) {
 		debug ("## Skipping init Ramdisk\n");
 		rd_len = rd_data = 0;
 	} else if (argc >= 3 || genimg_has_config (images)) {
@@ -1258,6 +1328,26 @@ error:
 	return 1;
 }
 
+void *chk_append_dtb_image(bootm_headers_t *images)
+{
+#define MAX_FDT_BLOB_SIZE 32*1024
+	ulong fdt_src = images->os.end;
+
+	u8 *fdt_dst = (u8 *)malloc(MAX_FDT_BLOB_SIZE);
+	if (!fdt_dst) {
+		printf("No mem for DTB blob\n");
+		return NULL;
+	}
+
+	memcpy(fdt_dst, (void *)fdt_src, MAX_FDT_BLOB_SIZE);
+	if (fdt_check_header(fdt_dst) == 0) {
+		return (void *)fdt_dst;
+	}
+
+	free(fdt_dst);
+	return NULL;
+}
+
 /**
  * boot_get_fdt - main fdt handling routine
  * @argc: command argument count
@@ -1560,13 +1650,15 @@ int boot_get_fdt (int flag, int argc, char *argv[], bootm_headers_t *images,
 			debug ("## No Flattened Device Tree\n");
 			return 0;
 		}
+	} else if ((fdt_blob = chk_append_dtb_image(images))) {
+		printf ("## Flattened Device Tree blob at %08lx from Appended DTB Image\n", (long)fdt_blob);
 	} else {
 		debug ("## No Flattened Device Tree\n");
 		return 0;
 	}
 
 	*of_flat_tree = fdt_blob;
-	*of_size = be32_to_cpu (fdt_totalsize (fdt_blob));
+	*of_size = le32_to_cpu (fdt_totalsize (fdt_blob));
 	debug ("   of_flat_tree at 0x%08lx size 0x%08lx\n",
 			(ulong)*of_flat_tree, *of_size);
 
@@ -2417,16 +2509,16 @@ int fit_set_timestamp (void *fit, int noffset, time_t timestamp)
 static int calculate_hash (const void *data, int data_len, const char *algo,
 			uint8_t *value, int *value_len)
 {
-	if (strcmp (algo, "crc32") == 0 ) {
+	if (strncmp (algo, "crc32", sizeof("crc32")) == 0 ) {
 		*((uint32_t *)value) = crc32_wd (0, data, data_len,
 							CHUNKSZ_CRC32);
 		*((uint32_t *)value) = cpu_to_uimage (*((uint32_t *)value));
 		*value_len = 4;
-	} else if (strcmp (algo, "sha1") == 0 ) {
+	} else if (strncmp (algo, "sha1", sizeof("sha1")) == 0 ) {
 		sha1_csum_wd ((unsigned char *) data, data_len,
 				(unsigned char *) value, CHUNKSZ_SHA1);
 		*value_len = 20;
-	} else if (strcmp (algo, "md5") == 0 ) {
+	} else if (strncmp (algo, "md5", sizeof("md5")) == 0 ) {
 		md5_wd ((unsigned char *)data, data_len, value, CHUNKSZ_MD5);
 		*value_len = 16;
 	} else {
@@ -3076,3 +3168,4 @@ static int fit_check_ramdisk (const void *fit, int rd_noffset, uint8_t arch, int
 }
 #endif /* USE_HOSTCC */
 #endif /* CONFIG_FIT */
+

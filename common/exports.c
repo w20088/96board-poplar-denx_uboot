@@ -3,6 +3,13 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+#ifdef CONFIG_SUPPORT_CA_RELEASE
+#undef puts
+#undef printf
+void puts(const char*);
+void printf(const char* fmt, ...);
+#endif
+
 static void dummy(void)
 {
 }
@@ -41,5 +48,11 @@ unsigned long get_version(void)
 void jumptable_init(void)
 {
 	gd->jt = malloc(XF_MAX * sizeof(void *));
+	if (!gd->jt) {
+#ifndef CONFIG_SUPPORT_CA_RELEASE
+		printf("Failt to alloc memory for gd-jt!\n");
+#endif
+		return ;
+	}
 #include <_exports.h>
 }

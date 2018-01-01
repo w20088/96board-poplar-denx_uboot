@@ -21,7 +21,9 @@ EXPORT_FUNC(setenv)
 EXPORT_FUNC(forceenv)
 EXPORT_FUNC(simple_strtoul)
 EXPORT_FUNC(simple_strtol)
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 EXPORT_FUNC(strcmp)
+#endif
 EXPORT_FUNC(i2c_write)
 EXPORT_FUNC(i2c_read)
 EXPORT_FUNC(spi_init)

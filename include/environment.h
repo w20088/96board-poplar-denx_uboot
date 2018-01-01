@@ -137,12 +137,22 @@ typedef	struct environment_s {
 	unsigned char	data[ENV_SIZE]; /* Environment data		*/
 } env_t;
 
+struct env_common_func_t {
+	int (* env_init)(void);
+	unsigned char (* env_get_char_spec)(int);
+	int (* saveenv)(void);
+	int (* env_relocate_spec)(unsigned int);
+	int env_media;
+	char *env_name_spec;
+};
+
 /* Function that returns a character from the environment */
 unsigned char env_get_char (int);
 
 /* Function that returns a pointer to a value from the environment */
 unsigned char *env_get_addr(int);
 unsigned char env_get_char_memory (int index);
+char *env_get_media(int *media);
 
 /* Function that updates CRC of the enironment */
 void env_crc_update (void);

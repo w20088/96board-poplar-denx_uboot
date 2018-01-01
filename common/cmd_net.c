@@ -43,15 +43,15 @@ U_BOOT_CMD(
 	"[loadAddress] [[hostIPaddr:]bootfilename]"
 );
 
-int do_tftpb (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+int do_tftp (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	return netboot_common (TFTP, cmdtp, argc, argv);
 }
 
 U_BOOT_CMD(
-	tftpboot,	3,	1,	do_tftpb,
-	"boot image via network using TFTP protocol",
-	"[loadAddress] [[hostIPaddr:]bootfilename]"
+	tftp,	4,	1,	do_tftp,
+	"tftp\t- download or upload image via network using TFTP protocol",
+	"[loadAddress] [bootfilename] <upload_size>"
 );
 
 int do_rarpb (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
@@ -153,6 +153,9 @@ static void netboot_update_env (void)
 static int
 netboot_common (proto_t proto, cmd_tbl_t *cmdtp, int argc, char *argv[])
 {
+	extern ulong upload_addr;
+	extern ulong upload_size;
+
 	char *s;
 	char *end;
 	int   rcode = 0;
@@ -182,6 +185,14 @@ netboot_common (proto_t proto, cmd_tbl_t *cmdtp, int argc, char *argv[])
 		break;
 
 	case 3:	load_addr = simple_strtoul(argv[1], NULL, 16);
+		copy_filename (BootFile, argv[2], sizeof(BootFile));
+		upload_size = 0;
+		
+		break;
+	
+	case 4:
+		upload_addr = simple_strtoul(argv[1], NULL, 16);
+		upload_size = simple_strtoul(argv[3], NULL, 16);
 		copy_filename (BootFile, argv[2], sizeof(BootFile));
 
 		break;

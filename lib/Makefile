@@ -32,7 +32,14 @@ COBJS-$(CONFIG_BZIP2) += bzlib_decompress.o
 COBJS-$(CONFIG_BZIP2) += bzlib_randtable.o
 COBJS-$(CONFIG_BZIP2) += bzlib_huffman.o
 COBJS-$(CONFIG_USB_TTY) += circbuf.o
+
+ifndef CONFIG_SUPPORT_CA_RELEASE
+ifndef CONFIG_SUPPORT_CA_DEBUG
 COBJS-y += crc16.o
+COBJS-y	+= strmhz.o
+endif
+endif
+
 COBJS-y += crc32.o
 COBJS-y += ctype.o
 COBJS-y += display_options.o
@@ -45,11 +52,14 @@ COBJS-y += net_utils.o
 COBJS-$(CONFIG_SHA1) += sha1.o
 COBJS-$(CONFIG_SHA256) += sha256.o
 COBJS-y += string.o
-COBJS-y	+= strmhz.o
 COBJS-y += time.o
-COBJS-y += vsprintf.o
+COBJS-y += vsprintf.o vsnprintf.o
 COBJS-$(CONFIG_ZLIB) += zlib.o
 COBJS-$(CONFIG_RBTREE)	+= rbtree.o
+COBJS-y	+= reserve_mem.o
+COBJS-y	+= parse_bootargs.o
+COBJS-y	+= match_table.o
+COBJS-y	+= bootimg.o
 
 COBJS	:= $(COBJS-y)
 SRCS	:= $(COBJS:.o=.c)

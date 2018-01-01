@@ -516,7 +516,58 @@ int do_load_serial_bin (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	return rcode;
 }
 
+int do_upload_serial_bin(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+	ulong offset = 0;
+	ulong size   = 0;
+	int load_baudrate, current_baudrate;
+	int rcode = 0;
 
+	if (argc < 3) {
+		cmd_usage(cmdtp);
+		return 1;
+	}
+	offset = simple_strtoul(argv[1], NULL, 16);
+	size  = simple_strtoul(argv[2], NULL, 16);
+	load_baudrate = current_baudrate = gd->baudrate;
+	if (argc == 4) {
+		load_baudrate = (int)simple_strtoul(argv[3], NULL, 10);
+		if (load_baudrate == 0)
+			load_baudrate = current_baudrate;
+	}
+
+	if (load_baudrate != current_baudrate) {
+		printf ("## Switch baudrate to %d bps and press ENTER ...\n",
+			load_baudrate);
+		udelay(50000);
+		gd->baudrate = load_baudrate;
+		serial_setbrg ();
+		udelay(50000);
+		for (;;) {
+			if (getc() == '\r')
+				break;
+		}
+	}
+	printf ("## Ready for binary (xmodem) upload "
+		"from 0x%08lX size 0x%08lX at %d bps...\n", offset, size,
+		load_baudrate);
+	if ( xyzModem_stream_write(offset, size)) {
+		rcode = 1;
+	}
+	if (load_baudrate != current_baudrate) {
+		printf ("## Switch baudrate to %d bps and press ESC ...\n",
+			current_baudrate);
+		udelay (50000);
+		gd->baudrate = current_baudrate;
+		serial_setbrg ();
+		udelay (50000);
+		for (;;) {
+			if (getc() == 0x1B) /* ESC */
+				break;
+		}
+	}
+	return rcode;
+}
 static ulong load_serial_bin (ulong offset)
 {
 	int size, i;
@@ -1086,6 +1137,13 @@ U_BOOT_CMD(
 	" with offset 'off' and baudrate 'baud'"
 );
 
+U_BOOT_CMD(
+	uploadx, 4, 0,	do_upload_serial_bin,
+	"upload binary file over serial line (xmodem mode)",
+	"[ off ] [size] [ baud ]\n"
+	"    - upload binary file over serial line"
+	" with offset 'off', file size 'size' and baudrate 'baud'"
+);
 #endif
 
 /* -------------------------------------------------------------------- */

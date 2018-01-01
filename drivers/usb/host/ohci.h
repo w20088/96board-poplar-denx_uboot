@@ -7,74 +7,28 @@
  * usb-ohci.h
  */
 
+/*
+ * e.g. PCI controllers need this
+ */
+#ifdef CONFIG_SYS_OHCI_SWAP_REG_ACCESS
+# define ohci_readl(a) __swap_32(*((volatile u32 *)(a)))
+# define ohci_writel(a, b) (*((volatile u32 *)(b)) = __swap_32((volatile u32)a))
+#else
+# define ohci_readl(a) (*((volatile u32 *)(a)))
+# define ohci_writel(a, b) (*((volatile u32 *)(b)) = ((volatile u32)a))
+#endif /* CONFIG_SYS_OHCI_SWAP_REG_ACCESS */
+
 /* functions for doing board or CPU specific setup/cleanup */
 extern int usb_board_init(void);
 extern int usb_board_stop(void);
 extern int usb_board_init_fail(void);
 
-extern int usb_cpu_init(void);
-extern int usb_cpu_stop(void);
+extern int usb_cpu_init(int index, unsigned int *addr);
+extern int usb_cpu_stop(int index);
 extern int usb_cpu_init_fail(void);
 
 
-static int cc_to_error[16] = {
-
-/* mapping of the OHCI CC status to error codes */
-	/* No  Error  */	       0,
-	/* CRC Error  */	       USB_ST_CRC_ERR,
-	/* Bit Stuff  */	       USB_ST_BIT_ERR,
-	/* Data Togg  */	       USB_ST_CRC_ERR,
-	/* Stall      */	       USB_ST_STALLED,
-	/* DevNotResp */	       -1,
-	/* PIDCheck   */	       USB_ST_BIT_ERR,
-	/* UnExpPID   */	       USB_ST_BIT_ERR,
-	/* DataOver   */	       USB_ST_BUF_ERR,
-	/* DataUnder  */	       USB_ST_BUF_ERR,
-	/* reservd    */	       -1,
-	/* reservd    */	       -1,
-	/* BufferOver */	       USB_ST_BUF_ERR,
-	/* BuffUnder  */	       USB_ST_BUF_ERR,
-	/* Not Access */	       -1,
-	/* Not Access */	       -1
-};
-
-static const char *cc_to_string[16] = {
-	"No Error",
-	"CRC: Last data packet from endpoint contained a CRC error.",
-	"BITSTUFFING: Last data packet from endpoint contained a bit " \
-		     "stuffing violation",
-	"DATATOGGLEMISMATCH: Last packet from endpoint had data toggle PID\n" \
-		     "that did not match the expected value.",
-	"STALL: TD was moved to the Done Queue because the endpoint returned" \
-		     " a STALL PID",
-	"DEVICENOTRESPONDING: Device did not respond to token (IN) or did\n" \
-		     "not provide a handshake (OUT)",
-	"PIDCHECKFAILURE: Check bits on PID from endpoint failed on data PID\n"\
-		     "(IN) or handshake (OUT)",
-	"UNEXPECTEDPID: Receive PID was not valid when encountered or PID\n" \
-		     "value is not defined.",
-	"DATAOVERRUN: The amount of data returned by the endpoint exceeded\n" \
-		     "either the size of the maximum data packet allowed\n" \
-		     "from the endpoint (found in MaximumPacketSize field\n" \
-		     "of ED) or the remaining buffer size.",
-	"DATAUNDERRUN: The endpoint returned less than MaximumPacketSize\n" \
-		     "and that amount was not sufficient to fill the\n" \
-		     "specified buffer",
-	"reserved1",
-	"reserved2",
-	"BUFFEROVERRUN: During an IN, HC received data from endpoint faster\n" \
-		     "than it could be written to system memory",
-	"BUFFERUNDERRUN: During an OUT, HC could not retrieve data from\n" \
-		     "system memory fast enough to keep up with data USB " \
-		     "data rate.",
-	"NOT ACCESSED: This code is set by software before the TD is placed" \
-		     "on a list to be processed by the HC.(1)",
-	"NOT ACCESSED: This code is set by software before the TD is placed" \
-		     "on a list to be processed by the HC.(2)",
-};
-
 /* ED States */
-
 #define ED_NEW		0x00
 #define ED_UNLINK	0x01
 #define ED_OPER		0x02
@@ -196,8 +150,8 @@ struct ohci_hcca {
 
 /*
  * This is the structure of the OHCI controller's memory mapped I/O
- * region.  This is Memory Mapped I/O.	You must use the readl() and
- * writel() macros defined in asm/io.h to access these!!
+ * region.  This is Memory Mapped I/O.	You must use the ohci_readl() and
+ * ohci_writel() macros defined in this file to access these!!
  */
 struct ohci_regs {
 	/* control and status registers */
@@ -400,6 +354,16 @@ typedef struct
 } urb_priv_t;
 #define URB_DEL 1
 
+#define NUM_EDS 8		/* num of preallocated endpoint descriptors */
+
+#define NUM_TD 64              /* we need more TDs than EDs */
+
+typedef struct ohci_device {
+	ed_t ed[NUM_EDS] __attribute__((aligned(16)));
+	td_t tds[NUM_TD] __attribute__((aligned(32)));
+	int ed_cnt;
+} ohci_dev_t;
+
 /*
  * This is the full ohci controller description
  *
@@ -409,6 +373,8 @@ typedef struct
 
 
 typedef struct ohci {
+	/* this allocates EDs for all possible endpoints */
+	struct ohci_device ohci_dev __attribute__((aligned(32)));
 	struct ohci_hcca *hcca;		/* hcca */
 	/*dma_addr_t hcca_dma;*/
 
@@ -430,54 +396,3 @@ typedef struct ohci {
 
 	const char	*slot_name;
 } ohci_t;
-
-#define NUM_EDS 8		/* num of preallocated endpoint descriptors */
-
-struct ohci_device {
-	ed_t	ed[NUM_EDS];
-	int ed_cnt;
-};
-
-/* hcd */
-/* endpoint */
-static int ep_link(ohci_t * ohci, ed_t * ed);
-static int ep_unlink(ohci_t * ohci, ed_t * ed);
-static ed_t * ep_add_ed(struct usb_device * usb_dev, unsigned long pipe,
-		int interval, int load);
-
-/*-------------------------------------------------------------------------*/
-
-/* we need more TDs than EDs */
-#define NUM_TD 64
-
-/* +1 so we can align the storage */
-td_t gtd[NUM_TD+1];
-/* pointers to aligned storage */
-td_t *ptd;
-
-/* TDs ... */
-static inline struct td *
-td_alloc (struct usb_device *usb_dev)
-{
-	int i;
-	struct td	*td;
-
-	td = NULL;
-	for (i = 0; i < NUM_TD; i++)
-	{
-		if (ptd[i].usb_dev == NULL)
-		{
-			td = &ptd[i];
-			td->usb_dev = usb_dev;
-			break;
-		}
-	}
-
-	return td;
-}
-
-static inline void
-ed_free (struct ed *ed)
-{
-	ed->usb_dev = NULL;
-}

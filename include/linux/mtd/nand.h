@@ -18,13 +18,6 @@
 #ifndef __LINUX_MTD_NAND_H
 #define __LINUX_MTD_NAND_H
 
-/* XXX U-BOOT XXX */
-#if 0
-#include <linux/wait.h>
-#include <linux/spinlock.h>
-#include <linux/mtd/mtd.h>
-#endif
-
 #include "config.h"
 
 #include "linux/mtd/compat.h"
@@ -50,8 +43,8 @@ extern void nand_wait_ready(struct mtd_info *mtd);
  * is supported now. If you add a chip with bigger oobsize/page
  * adjust this accordingly.
  */
-#define NAND_MAX_OOBSIZE	218
-#define NAND_MAX_PAGESIZE	4096
+#define NAND_MAX_OOBSIZE    4800
+#define NAND_MAX_PAGESIZE   32768
 
 /*
  * Constants for hardware specific CLE/ALE/NCE function
@@ -85,6 +78,8 @@ extern void nand_wait_ready(struct mtd_info *mtd);
 #define NAND_CMD_RNDIN		0x85
 #define NAND_CMD_READID		0x90
 #define NAND_CMD_ERASE2		0xd0
+#define NAND_CMD_PARAM		0xec
+#define NAND_CMD_SYNC_RESET	0xfc
 #define NAND_CMD_RESET		0xff
 
 /* Extended commands for large page devices */
@@ -113,7 +108,7 @@ extern void nand_wait_ready(struct mtd_info *mtd);
 
 #define NAND_CMD_NONE		-1
 
-/* Status bits */
+/* Status bits for NAND Flash*/
 #define NAND_STATUS_FAIL	0x01
 #define NAND_STATUS_FAIL_N1	0x02
 #define NAND_STATUS_TRUE_READY	0x20
@@ -202,6 +197,10 @@ typedef enum {
    (e.g. because it needs them DMA-coherent */
 #define NAND_OWN_BUFFERS	0x00040000
 /* Options set by nand scan */
+
+#define NAND_BBT_2ND_PAGE	0x10000000
+#define NAND_BBT_LAST_PAGE	0x20000000
+
 /* bbt has already been read */
 #define NAND_BBT_SCANNED	0x40000000
 /* Nand scan has allocated controller struct */
@@ -222,11 +221,6 @@ struct nand_chip;
  *                      used instead of the per chip wait queue when a hw controller is available
  */
 struct nand_hw_control {
-/* XXX U-BOOT XXX */
-#if 0
-	spinlock_t	 lock;
-	wait_queue_head_t wq;
-#endif
 	struct nand_chip *active;
 };
 
@@ -405,6 +399,9 @@ struct nand_chip {
 	int		badblockpos;
 
 	int 		state;
+	int		is_spi_nand;
+
+	int		read_retry_type;
 
 	uint8_t		*oob_poi;
 	struct nand_hw_control  *controller;
@@ -438,6 +435,11 @@ struct nand_chip {
 #define NAND_MFR_HYNIX		0xad
 #define NAND_MFR_MICRON		0x2c
 #define NAND_MFR_AMD		0x01
+#define NAND_MFR_EON		0x92
+#define NAND_MFR_GIGA		0xc8
+#define NAND_MFR_GD		0xc8
+#define NAND_MFR_ESMT		0xC8
+#define NAND_MFR_WINBOND	0xef
 
 /**
  * struct nand_flash_dev - NAND Flash Device ID Structure
@@ -454,10 +456,10 @@ struct nand_chip {
 struct nand_flash_dev {
 	char *name;
 	int id;
-	unsigned long pagesize;
-	unsigned long chipsize;
-	unsigned long erasesize;
-	unsigned long options;
+	unsigned int pagesize;
+	unsigned int chipsize;
+	unsigned int erasesize;
+	unsigned int options;
 };
 
 /**

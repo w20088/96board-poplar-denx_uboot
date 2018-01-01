@@ -29,6 +29,16 @@
 #include <usb_defs.h>
 #include <usbdescriptors.h>
 
+/*
+ * The EHCI spec says that we must align to at least 32 bytes.  However,
+ * some platforms require larger alignment.
+ */
+#if ARCH_DMA_MINALIGN > 32
+#define USB_DMA_MINALIGN	ARCH_DMA_MINALIGN
+#else
+#define USB_DMA_MINALIGN	32
+#endif
+
 /* Everything is aribtrary */
 #define USB_ALTSETTINGALLOC		4
 #define USB_MAXALTSETTING		128	/* Hard limit */
@@ -41,6 +51,12 @@
 #define USB_MAX_HUB			16
 
 #define USB_CNTL_TIMEOUT 100 /* 100ms timeout */
+
+/*
+ * This is the timeout to allow for submitting an urb in ms. We allow more
+ * time for a BULK device to react - some are slow.
+ */
+#define USB_TIMEOUT_MS(pipe) (usb_pipebulk(pipe) ? 5000 : 1000)
 
 /* device request (setup) */
 struct devrequest {
@@ -103,7 +119,9 @@ struct usb_device {
 	int epmaxpacketout[16];		/* OUTput endpoint specific maximums */
 
 	int configno;			/* selected config number */
-	struct usb_device_descriptor descriptor; /* Device Descriptor */
+	/* Device Descriptor */
+	struct usb_device_descriptor descriptor
+		__attribute__((aligned(ARCH_DMA_MINALIGN)));
 	struct usb_config config; /* config descriptor */
 
 	int have_langid;		/* whether string_langid is valid yet */
@@ -122,6 +140,8 @@ struct usb_device {
 	int portnr;
 	struct usb_device *parent;
 	struct usb_device *children[USB_MAXCHILDREN];
+
+	void *controller;               /* hardware controller private data */
 };
 
 /**********************************************************************
@@ -133,17 +153,17 @@ struct usb_device {
 	defined(CONFIG_USB_SL811HS) || defined(CONFIG_USB_ISP116X_HCD) || \
 	defined(CONFIG_USB_R8A66597_HCD) || defined(CONFIG_USB_DAVINCI) || \
 	defined(CONFIG_USB_OMAP3) || defined(CONFIG_USB_DA8XX) || \
-	defined(CONFIG_USB_BLACKFIN)
+	defined(CONFIG_USB_BLACKFIN) || defined(CONFIG_USB_AM35X)
 
-int usb_lowlevel_init(void);
-int usb_lowlevel_stop(void);
+int usb_lowlevel_init(int index, void **controller);
+int usb_lowlevel_stop(int index);
+
 int submit_bulk_msg(struct usb_device *dev, unsigned long pipe,
 			void *buffer, int transfer_len);
 int submit_control_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 			int transfer_len, struct devrequest *setup);
 int submit_int_msg(struct usb_device *dev, unsigned long pipe, void *buffer,
 			int transfer_len, int interval);
-void usb_event_poll(void);
 
 /* Defines */
 #define USB_UHCI_VEND_ID	0x8086
@@ -185,7 +205,7 @@ int usb_bulk_msg(struct usb_device *dev, unsigned int pipe,
 			void *data, int len, int *actual_length, int timeout);
 int usb_submit_int_msg(struct usb_device *dev, unsigned long pipe,
 			void *buffer, int transfer_len, int interval);
-void usb_disable_asynch(int disable);
+int usb_disable_asynch(int disable);
 int usb_maxpacket(struct usb_device *dev, unsigned long pipe);
 inline void wait_ms(unsigned long ms);
 int usb_get_configuration_no(struct usb_device *dev, unsigned char *buffer,
@@ -353,5 +373,13 @@ struct usb_hub_device {
 	struct usb_device *pusb_dev;
 	struct usb_hub_descriptor desc;
 };
+
+int usb_hub_probe(struct usb_device *dev, int ifnum);
+void usb_hub_reset(void);
+int hub_port_reset(struct usb_device *dev, int port,
+			  unsigned short *portstat);
+
+struct usb_device *usb_alloc_new_device(void *controller);
+int usb_new_device(struct usb_device *dev);
 
 #endif /*_USB_H_ */

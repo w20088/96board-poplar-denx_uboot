@@ -40,6 +40,10 @@
 
 #include <post.h>
 
+#ifdef CONFIG_HIBERNATE
+#include <hibernate.h>
+#endif
+
 #if defined(CONFIG_SILENT_CONSOLE) || defined(CONFIG_POST) || defined(CONFIG_CMDLINE_EDITING)
 DECLARE_GLOBAL_DATA_PTR;
 #endif
@@ -276,7 +280,7 @@ void main_loop (void)
 #ifndef CONFIG_SYS_HUSH_PARSER
 	static char lastcommand[CONFIG_SYS_CBSIZE] = { 0, };
 	int len;
-	int rc = 1;
+	__attribute__((__unused__)) int rc = 1;
 	int flag;
 #endif
 
@@ -393,8 +397,17 @@ void main_loop (void)
 	}
 	else
 #endif /* CONFIG_BOOTCOUNT_LIMIT */
-		s = getenv ("bootcmd");
+	s = getenv ("bootcmd");
 
+#ifdef CONFIG_HIBERNATE
+	if (bootdelay >= 0 && !tstc())
+		hibernate_boot(-1);
+#endif
+
+#ifdef CONFIG_HISI_SNAPSHOT_BOOT
+	if (bootdelay >= 0 && !tstc())
+		checkout_qbboot();
+#endif
 	debug ("### main_loop: bootcmd=\"%s\"\n", s ? s : "<UNDEFINED>");
 
 	if (bootdelay >= 0 && s && !abortboot (bootdelay)) {
@@ -456,8 +469,10 @@ void main_loop (void)
 		len = readline (CONFIG_SYS_PROMPT);
 
 		flag = 0;	/* assume no special flags for now */
-		if (len > 0)
-			strcpy (lastcommand, console_buffer);
+		if (len > 0) {
+			strncpy (lastcommand, console_buffer, sizeof(lastcommand));
+			lastcommand[sizeof(lastcommand) - 1] = '\0';
+		}
 		else if (len == 0)
 			flag |= CMD_FLAG_REPEAT;
 #ifdef CONFIG_BOOT_RETRY_TIME
@@ -479,10 +494,8 @@ void main_loop (void)
 		else
 			rc = run_command (lastcommand, flag);
 
-		if (rc <= 0) {
 			/* invalid command or not repeatable, forget it */
 			lastcommand[0] = 0;
-		}
 	}
 #endif /*CONFIG_SYS_HUSH_PARSER*/
 }
@@ -567,7 +580,8 @@ static void hist_init(void)
 
 static void cread_add_to_hist(char *line)
 {
-	strcpy(hist_list[hist_add_idx], line);
+	strncpy(hist_list[hist_add_idx], line, HIST_SIZE + 1);
+	hist_list[hist_add_idx][HIST_SIZE] = '\0';
 
 	if (++hist_add_idx >= HIST_MAX)
 		hist_add_idx = 0;
@@ -887,7 +901,8 @@ static int cread_line(const char *const prompt, char *buf, unsigned int *len)
 			ERASE_TO_EOL();
 
 			/* copy new line into place and display */
-			strcpy(buf, hline);
+			strncpy(buf, hline, CONFIG_SYS_CBSIZE + 1);
+			buf[CONFIG_SYS_CBSIZE] = '\0';
 			eol_num = strlen(buf);
 			REFRESH_TO_EOL();
 			continue;
@@ -966,13 +981,12 @@ int readline_into_buffer (const char *const prompt, char * buffer)
 	 * Revert to non-history version if still
 	 * running from flash.
 	 */
-	if (gd->flags & GD_FLG_RELOC) {
+	if ((gd->flags & GD_FLG_RELOC)||(gd->flags & GD_FLG_DEVINIT)) {
 		if (!initted) {
 			hist_init();
 			initted = 1;
 		}
 
-		if (prompt)
 			puts (prompt);
 
 		rc = cread_line(prompt, p, &len);
@@ -1323,7 +1337,8 @@ int run_command (const char *cmd, int flag)
 		return -1;
 	}
 
-	strcpy (cmdbuf, cmd);
+	strncpy (cmdbuf, cmd, sizeof(cmdbuf));
+	cmdbuf[sizeof(cmdbuf) - 1] = '\0';
 
 	/* Process separators and check for invalid
 	 * repeatable commands

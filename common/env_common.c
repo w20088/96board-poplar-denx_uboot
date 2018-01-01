@@ -46,7 +46,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 extern env_t *env_ptr;
 
-extern void env_relocate_spec (void);
+extern int env_relocate_spec (unsigned int);
 extern uchar env_get_char_spec(int);
 
 static uchar env_get_char_init (int index);
@@ -57,6 +57,11 @@ static uchar env_get_char_init (int index);
 #define XMK_STR(x)	#x
 #define MK_STR(x)	XMK_STR(x)
 
+#ifdef CONFIG_SUPPORT_CA_RELEASE
+uchar default_environment[] = {
+	"\0"
+};
+#else
 uchar default_environment[] = {
 #ifdef	CONFIG_BOOTARGS
 	"bootargs="	CONFIG_BOOTARGS			"\0"
@@ -78,6 +83,9 @@ uchar default_environment[] = {
 #endif
 #ifdef	CONFIG_LOADS_ECHO
 	"loads_echo="	MK_STR(CONFIG_LOADS_ECHO)	"\0"
+#endif
+#ifdef	CONFIG_MDIO_INTF
+	"mdio_intf="	CONFIG_MDIO_INTF	        "\0"
 #endif
 #ifdef	CONFIG_ETHADDR
 	"ethaddr="	MK_STR(CONFIG_ETHADDR)		"\0"
@@ -138,6 +146,7 @@ uchar default_environment[] = {
 #endif
 	"\0"
 };
+#endif
 
 void env_crc_update (void)
 {
@@ -218,7 +227,13 @@ void set_default_env(void)
 #ifdef CONFIG_SYS_REDUNDAND_ENVIRONMENT
 	env_ptr->flags = 0xFF;
 #endif
-	env_crc_update ();
+	/* 
+	 * optimize uboot startup time, only do_saveenv command update CRC, 
+	 * so if you want do saveenv, you should call function env_crc_update() 
+	 * before call function saveenv()
+	 * modified by baijinying KF39160 2011-04-22
+	 */
+	/* env_crc_update (); */
 	gd->env_valid = 1;
 }
 
@@ -258,10 +273,52 @@ void env_relocate (void)
 		show_boot_progress (-60);
 #endif
 		set_default_env();
+	} else {
+		int rel;
+
+		memset(env_ptr, 0, CONFIG_ENV_SIZE);
+#if defined(CONFIG_PRODUCT_WITH_BOOT) && defined(CONFIG_SUPPORT_CA)
+		if (!load_direct_env(env_ptr, CONFIG_ENV_ADDR, CONFIG_ENV_SIZE)) {
+			if (crc32(0, env_ptr->data, ENV_SIZE) == env_ptr->crc)
+				goto done;
+		}
+
+#ifdef CONFIG_ENV_BACKUP
+		if (!load_direct_env(env_ptr, CONFIG_ENV_BACKUP_ADDR, CONFIG_ENV_SIZE)) {
+			if (crc32(0, env_ptr->data, ENV_SIZE) == env_ptr->crc)
+				goto done;
+		}			
+#endif
+#endif
+		rel = env_relocate_spec(CONFIG_ENV_ADDR);
+
+#ifdef CONFIG_ENV_BACKUP
+		if (rel) {
+			printf("Read Env form %s addr(0x%08X) fail, "
+			       "try to read from Backup Env.\n",
+			       env_get_media(NULL),
+			       CONFIG_ENV_ADDR);
+
+			rel = env_relocate_spec(CONFIG_ENV_BACKUP_ADDR);
+			/*
+			 * the saveenv() will not calculate crc, the crc value
+			 * come from env_relocate_spec().
+			 */
+			if (!rel)
+				rel = saveenv();
+		}
+#endif /* CONFIG_ENV_BACKUP */
+		if (rel) {
+			printf("\n*** Warning - bad CRC or %s, "
+			      "using default environment\n\n",
+			      env_get_media(NULL));
+			set_default_env();
+		}
 	}
-	else {
-		env_relocate_spec ();
-	}
+
+#if defined(CONFIG_PRODUCT_WITH_BOOT) && defined(CONFIG_SUPPORT_CA)
+done:
+#endif
 	gd->env_addr = (ulong)&(env_ptr->data);
 
 #ifdef CONFIG_AMIGAONEG3SE

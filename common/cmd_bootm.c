@@ -61,10 +61,14 @@
 #include <linux/lzo.h>
 #endif /* CONFIG_LZO */
 
+#include <bootimg.h>
+
 DECLARE_GLOBAL_DATA_PTR;
 
+#define MAX_BOOTIMG_LEN        0x4000000  /* 64M */
+
 #ifndef CONFIG_SYS_BOOTM_LEN
-#define CONFIG_SYS_BOOTM_LEN	0x800000	/* use 8MByte as default max gunzip size */
+#define CONFIG_SYS_BOOTM_LEN	0x2000000	/* use 8MByte as default max gunzip size */
 #endif
 
 #ifdef CONFIG_BZIP2
@@ -93,6 +97,12 @@ static int fit_check_kernel (const void *fit, int os_noffset, int verify);
 static void *boot_get_kernel (cmd_tbl_t *cmdtp, int flag,int argc, char *argv[],
 		bootm_headers_t *images, ulong *os_data, ulong *os_len);
 extern int do_reset (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[]);
+extern void show_bootimg_header(void *buf);
+
+extern int is_trustedcore_img(char *buf);
+extern int do_load_secure_os(ulong addr, ulong org_offset, ulong img_dst, int run, uint32_t *rtos_load_addr);
+extern void dcache_enable(uint32_t unused);
+extern void dcache_disable(void);
 
 /*
  *  Continue booting an OS image; caller already has:
@@ -219,7 +229,7 @@ static int bootm_start(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	/* get kernel image header, start address and length */
 	os_hdr = boot_get_kernel (cmdtp, flag, argc, argv,
 			&images, &images.os.image_start, &images.os.image_len);
-	if (images.os.image_len == 0) {
+	if (images.os.image_len == 0 || NULL == os_hdr) {
 		puts ("ERROR: can't get kernel image!\n");
 		return 1;
 	}
@@ -301,7 +311,8 @@ static int bootm_start(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		}
 
 #if defined(CONFIG_OF_LIBFDT)
-#if defined(CONFIG_PPC) || defined(CONFIG_M68K) || defined(CONFIG_SPARC)
+#if defined(CONFIG_PPC) || defined(CONFIG_M68K) || defined(CONFIG_SPARC) || defined(CONFIG_ARCH_S40) \
+	|| defined(CONFIG_ARCH_HIFONE) || defined(CONFIG_ARCH_HI3798CV2X)
 		/* find flattened device tree */
 		ret = boot_get_fdt (flag, argc, argv, &images,
 				    &images.ft_addr, &images.ft_len);
@@ -324,6 +335,7 @@ static int bootm_start(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 #define BOOTM_ERR_RESET		-1
 #define BOOTM_ERR_OVERLAP	-2
 #define BOOTM_ERR_UNIMPLEMENTED	-3
+#define BOOTM_STACK_GUARD	(32 * 1024)
 static int bootm_load_os(image_info_t os, ulong *load_end, int boot_progress)
 {
 	uint8_t comp = os.comp;
@@ -332,18 +344,42 @@ static int bootm_load_os(image_info_t os, ulong *load_end, int boot_progress)
 	ulong blob_end = os.end;
 	ulong image_start = os.image_start;
 	ulong image_len = os.image_len;
+#if defined(CONFIG_GZIP) || defined(CONFIG_BZIP2) \
+	|| defined(CONFIG_LZMA) || defined(CONFIG_LZO)
 	uint unc_len = CONFIG_SYS_BOOTM_LEN;
+#endif
+	ulong image_end;
 
 	const char *type_name = genimg_get_type_name (os.type);
+	int boot_sp;
+
+	__asm__ __volatile__(
+		"mov    %0, sp\n"
+		:"=r"(boot_sp)
+		:
+		:"cc"
+		);
+
+	/* Check whether kernel zImage overwrite uboot,
+	 * which will lead to kernel boot fail. */
+	image_end = load + image_len;
+	/* leave at most 32KByte for move image stack */
+	boot_sp -= BOOTM_STACK_GUARD;
+	if( !((load > _bss_end) || (image_end < boot_sp)) ) {
+		printf("\nkernel image will overwrite uboot! kernel boot fail!\n");
+		return BOOTM_ERR_RESET;
+	}
 
 	switch (comp) {
 	case IH_COMP_NONE:
-		if (load == blob_start) {
+		if (load == blob_start || load == image_start) {
 			printf ("   XIP %s ... ", type_name);
 		} else {
-			printf ("   Loading %s ... ", type_name);
+			dcache_enable(0);
+			printf ("   Loading %s from 0x%lu to 0x%lu ... ", type_name, image_start, load);
 			memmove_wd ((void *)load, (void *)image_start,
 					image_len, CHUNKSZ);
+			dcache_disable();
 		}
 		*load_end = load + image_len;
 		puts("OK\n");
@@ -351,6 +387,8 @@ static int bootm_load_os(image_info_t os, ulong *load_end, int boot_progress)
 #ifdef CONFIG_GZIP
 	case IH_COMP_GZIP:
 		printf ("   Uncompressing %s ... ", type_name);
+
+		dcache_enable(0);
 		if (gunzip ((void *)load, unc_len,
 					(uchar *)image_start, &image_len) != 0) {
 			puts ("GUNZIP: uncompress, out-of-mem or overwrite error "
@@ -359,6 +397,7 @@ static int bootm_load_os(image_info_t os, ulong *load_end, int boot_progress)
 				show_boot_progress (-6);
 			return BOOTM_ERR_RESET;
 		}
+		dcache_disable();
 
 		*load_end = load + image_len;
 		break;
@@ -444,9 +483,9 @@ static int bootm_start_standalone(ulong iflag, int argc, char *argv[])
 	int   (*appl)(int, char *[]);
 
 	/* Don't start if "autostart" is set to "no" */
-	if (((s = getenv("autostart")) != NULL) && (strcmp(s, "no") == 0)) {
+	if (((s = getenv("autostart")) != NULL) && (strncmp(s, "no", sizeof("no")) == 0)) {
 		char buf[32];
-		sprintf(buf, "%lX", images.os.image_len);
+		snprintf(buf, sizeof(buf), "%lX", images.os.image_len);
 		setenv("filesize", buf);
 		return 0;
 	}
@@ -531,9 +570,9 @@ int do_bootm_subcommand (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 			if (ret)
 				return ret;
 
-			sprintf(str, "%lx", images.initrd_start);
+			snprintf(str, sizeof(str), "%lx", images.initrd_start);
 			setenv("initrd_start", str);
-			sprintf(str, "%lx", images.initrd_end);
+			snprintf(str, sizeof(str), "%lx", images.initrd_end);
 			setenv("initrd_end", str);
 		}
 			break;
@@ -582,6 +621,31 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	ulong		load_end = 0;
 	int		ret;
 	boot_os_fn	*boot_fn;
+
+
+	if (2 == argc) {
+		char *buf = (char *)simple_strtoul(argv[1], NULL, 16);
+#ifdef CONFIG_TEE_SUPPORT
+		if (is_trustedcore_img(buf)) {
+			return do_load_secure_os((ulong)buf, 0, 0, 1, NULL);
+		}
+#ifdef CONFIG_SUPPORT_CA
+		else if (!memcmp((char *)buf, HI_ADVCA_MAGIC, HI_ADVCA_MAGIC_SIZE) && is_trustedcore_img(buf + HI_ADVCA_HEADER_SIZE)) {
+			printf("Boot Hisilicon ADVCA SecureOS Image ...\n");
+			return do_load_secure_os(buf, HI_ADVCA_HEADER_SIZE, 0, 1, NULL);
+		}
+#endif
+#endif
+
+#ifdef CONFIG_ARM64_SUPPORT
+		extern int is_fip(char *buf);
+		extern int load_fip(char *buf);
+		if (is_fip(buf)) {
+			return load_fip(buf);
+		}
+#endif
+	}
+
 #ifndef CONFIG_RELOC_FIXUP_WORKS
 	static int relocated = 0;
 
@@ -855,6 +919,46 @@ static void *boot_get_kernel (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[]
 		debug ("*  kernel: cmdline image address = 0x%08lx\n", img_addr);
 	}
 
+	/* 64M */
+#ifdef CONFIG_SUPPORT_CA
+	printf("Check Hisilicon_ADVCA ...\n");
+	if (memcmp((char *)img_addr, HI_ADVCA_MAGIC, HI_ADVCA_MAGIC_SIZE)) {
+		printf("Not hisilicon ADVCA image ...\n");
+	} else {
+		printf("Boot hisilicon ADVCA image ...\n");
+		img_addr += HI_ADVCA_HEADER_SIZE;
+	}
+#endif
+
+	if (!check_bootimg((char *)img_addr, MAX_BOOTIMG_LEN)) {
+		char *bootargs;
+		unsigned int initrd_start;
+		unsigned int initrd_size;
+		char *buf = (char *)img_addr;
+
+		if (bootimg_get_kernel(buf, MAX_BOOTIMG_LEN, (unsigned int*)&img_addr)) {
+			printf("Wrong Image Format for %s command\n",
+			       cmdtp->name);
+			return NULL;
+		}
+
+		if (!bootimg_get_ramfs(buf, MAX_BOOTIMG_LEN, &initrd_start,
+				       &initrd_size)) {
+			bootargs = getenv("bootargs");
+			if (bootargs) {
+				char str[1024] = {0};
+				memset(str, 0 ,sizeof(str));
+				snprintf(str, sizeof(str),
+					 "%s initrd=0x%X,0x%X", bootargs,
+					 initrd_start, initrd_size);
+				str[sizeof(str)-1] = '\0';
+				setenv("bootargs", str);
+
+				show_bootimg_header(buf);
+			}
+		}
+	}
+
 	show_boot_progress (1);
 
 	/* copy from dataflash if needed */
@@ -979,6 +1083,7 @@ static void *boot_get_kernel (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[]
 	return (void *)img_addr;
 }
 
+#ifndef CONFIG_SUPPORT_CA_RELEASE
 U_BOOT_CMD(
 	bootm,	CONFIG_SYS_MAXARGS,	1,	do_bootm,
 	"boot application image from memory",
@@ -1016,7 +1121,23 @@ U_BOOT_CMD(
 	"\tprep    - OS specific prep before relocation or go\n"
 	"\tgo      - start OS"
 );
+#else
+U_BOOT_CMD(
+	bootm,	CONFIG_SYS_MAXARGS,	1,	do_bootm, "", "");
+#endif
+/*******************************************************************/
+/* kern_load                                                       */
+/*******************************************************************/
+int kern_load(const char *addr)
+{
+	char cmdstr[20] = {0};
 
+	snprintf(cmdstr, sizeof(cmdstr), "bootm 0x%X", addr);
+	if(run_command(cmdstr, 0) < 0)
+		return -1;
+
+	return 0;
+}
 /*******************************************************************/
 /* bootd - boot default image */
 /*******************************************************************/
@@ -1404,7 +1525,7 @@ static int do_bootm_vxworks (int flag, int argc, char *argv[],
 	}
 #endif
 
-	sprintf(str, "%lx", images->ep); /* write entry-point into string */
+	snprintf(str, sizeof(str), "%lx", images->ep); /* write entry-point into string */
 	setenv("loadaddr", str);
 	do_bootvx(NULL, 0, 0, NULL);
 
@@ -1427,7 +1548,7 @@ static int do_bootm_qnxelf(int flag, int argc, char *argv[],
 	}
 #endif
 
-	sprintf(str, "%lx", images->ep); /* write entry-point into string */
+	snprintf(str, sizeof(str), "%lx", images->ep); /* write entry-point into string */
 	local_args[0] = argv[0];
 	local_args[1] = str;	/* and provide it via the arguments */
 	do_bootelf(NULL, 0, 2, local_args);

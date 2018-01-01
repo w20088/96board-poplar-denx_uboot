@@ -35,5 +35,7 @@ if rev=`svn info 2>/dev/null` ; then
 	printf -- '-svn%s' $rev
 fi
 
+printf -- ' ('"$USER"'@'"$HOSTNAME"')'
+
 # Check for any localversion-* files
 printf '%s' "`cat localversion-* 2>/dev/null`"

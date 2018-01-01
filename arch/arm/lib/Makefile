@@ -23,6 +23,7 @@
 
 include $(TOPDIR)/config.mk
 
+
 LIB	= $(obj)lib$(ARCH).a
 LIBGCC	= $(obj)libgcc.a
 
@@ -35,15 +36,21 @@ GLSOBJS	+= _udivsi3.o
 GLSOBJS	+= _umodsi3.o
 
 GLCOBJS	+= div0.o
+SOBJS-y	+= mmu.o
 
 COBJS-y	+= board.o
-COBJS-y	+= bootm.o
+COBJS-y	+= bootm.o tags.o
 COBJS-y	+= cache.o
+COBJS-y	+= process.o
 ifndef CONFIG_SYS_NO_CP15_CACHE
 COBJS-y	+= cache-cp15.o
 endif
 COBJS-y	+= interrupts.o
 COBJS-y	+= reset.o
+COBJS-y	+= ddr_layout.o
+COBJS-y	+= ddr_size.o
+COBJS-y	+= cpu_info.o
+COBJS-y	+= params.o
 
 SRCS	:= $(GLSOBJS:.o=.S) $(GLCOBJS:.o=.c) \
 	   $(SOBJS-y:.o=.S) $(COBJS-y:.o=.c)

@@ -25,6 +25,7 @@ include $(TOPDIR)/config.mk
 
 LIB	:= $(obj)libspi_flash.a
 
+COBJS-y = spi_compatible.o spi_ids.o
 COBJS-$(CONFIG_SPI_FLASH)	+= spi_flash.o
 COBJS-$(CONFIG_SPI_FLASH_ATMEL)	+= atmel.o
 COBJS-$(CONFIG_SPI_FLASH_MACRONIX)	+= macronix.o
@@ -33,6 +34,8 @@ COBJS-$(CONFIG_SPI_FLASH_SST)	+= sst.o
 COBJS-$(CONFIG_SPI_FLASH_STMICRO)	+= stmicro.o
 COBJS-$(CONFIG_SPI_FLASH_WINBOND)	+= winbond.o
 COBJS-$(CONFIG_SPI_M95XXX) += eeprom_m95xxx.o
+COBJS-$(CONFIG_SPI_FLASH_HISFC300)	+= hisfc300.o hisfc300_spi_ids.o
+COBJS-$(CONFIG_SPI_FLASH_HISFC350)	+= hisfc350.o hisfc350_spi_ids.o
 
 COBJS	:= $(COBJS-y)
 SRCS	:= $(COBJS:.o=.c)

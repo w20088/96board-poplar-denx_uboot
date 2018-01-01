@@ -61,7 +61,7 @@ void mkimage_register (struct image_type_params *tparams)
 
 	/* scan the linked list, check for registry and point the last one */
 	for (tp = &mkimage_tparams; *tp != NULL; tp = &(*tp)->next) {
-		if (!strcmp((*tp)->name, tparams->name)) {
+		if (!strncmp((*tp)->name, tparams->name, strlen(tparams->name) + 1)) {
 			fprintf (stderr, "%s: %s already registered\n",
 				params.cmdname, tparams->name);
 			return;
@@ -150,11 +150,11 @@ main (int argc, char **argv)
 	struct image_type_params *tparams = NULL;
 
 	/* Init Kirkwood Boot image generation/list support */
-	init_kwb_image_type ();
+	/* init_kwb_image_type (); */
 	/* Init Freescale imx Boot image generation/list support */
-	init_imx_image_type ();
+	/* init_imx_image_type (); */
 	/* Init FIT image generation/list support */
-	init_fit_image_type ();
+	/* init_fit_image_type (); */
 	/* Init Default image generation/list support */
 	init_default_image_type ();
 

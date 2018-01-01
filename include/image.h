@@ -38,7 +38,7 @@
 #ifdef USE_HOSTCC
 
 /* new uImage format support enabled on host */
-#define CONFIG_FIT		1
+/* #define CONFIG_FIT		1 */
 #define CONFIG_OF_LIBFDT	1
 #define CONFIG_FIT_VERBOSE	1 /* enable fit_format_{error,warning}() */
 
@@ -57,6 +57,31 @@
 #define CONFIG_MD5		/* FIT images need MD5 support */
 #define CONFIG_SHA1		/* and SHA1 */
 #endif
+
+#ifdef CONFIG_SYS_BOOT_RAMDISK_HIGH
+# define IMAGE_ENABLE_RAMDISK_HIGH     1
+#else
+# define IMAGE_ENABLE_RAMDISK_HIGH     0
+#endif
+
+#ifdef CONFIG_OF_LIBFDT
+# define IMAGE_ENABLE_OF_LIBFDT        1
+#else
+# define IMAGE_ENABLE_OF_LIBFDT        0
+#endif
+
+#ifdef CONFIG_SYS_BOOT_GET_CMDLINE
+# define IMAGE_BOOT_GET_CMDLINE                1
+#else
+# define IMAGE_BOOT_GET_CMDLINE                0
+#endif
+
+#ifdef CONFIG_OF_BOARD_SETUP
+# define IMAGE_OF_BOARD_SETUP          1
+#else
+# define IMAGE_OF_BOARD_SETUP          0
+#endif
+
 
 /*
  * Operating System Codes
@@ -90,6 +115,7 @@
 #define IH_ARCH_INVALID		0	/* Invalid CPU	*/
 #define IH_ARCH_ALPHA		1	/* Alpha	*/
 #define IH_ARCH_ARM		2	/* ARM		*/
+#define IH_ARCH_ARM64		22	/* ARM64	*/
 #define IH_ARCH_I386		3	/* Intel x86	*/
 #define IH_ARCH_IA64		4	/* IA64		*/
 #define IH_ARCH_MIPS		5	/* MIPS		*/
@@ -337,6 +363,7 @@ int boot_get_fdt (int flag, int argc, char *argv[], bootm_headers_t *images,
 		char **of_flat_tree, ulong *of_size);
 int boot_relocate_fdt (struct lmb *lmb, ulong bootmap_base,
 		char **of_flat_tree, ulong *of_size);
+void boot_fdt_add_mem_rsv_regions(struct lmb *lmb, void *fdt_blob);
 #endif
 
 #if defined(CONFIG_PPC) || defined(CONFIG_M68K)
@@ -479,7 +506,8 @@ void image_print_contents (const void *hdr);
 static inline int image_check_target_arch (const image_header_t *hdr)
 {
 #if defined(__ARM__)
-	if (!image_check_arch (hdr, IH_ARCH_ARM))
+	if (!image_check_arch (hdr, IH_ARCH_ARM)
+		&& !image_check_arch (hdr, IH_ARCH_ARM64))
 #elif defined(__avr32__)
 	if (!image_check_arch (hdr, IH_ARCH_AVR32))
 #elif defined(__bfin__)
@@ -508,6 +536,32 @@ static inline int image_check_target_arch (const image_header_t *hdr)
 	return 1;
 }
 #endif /* USE_HOSTCC */
+
+
+/**
+ * Set up properties in the FDT
+ *
+ * This sets up properties in the FDT that is to be passed to linux.
+ *
+ * @images:    Images information
+ * @blob:      FDT to update
+ * @of_size:   Size of the FDT
+ * @lmb:       Points to logical memory block structure
+ * @return 0 if ok, <0 on failure
+ */
+int image_setup_libfdt(bootm_headers_t *images, void *blob,
+                      int of_size, struct lmb *lmb);
+
+/**
+ * Set up the FDT to use for booting a kernel
+ *
+ * This performs ramdisk setup, sets up the FDT if required, and adds
+ * paramters to the FDT if libfdt is available.
+ *
+ * @param images       Images information
+ * @return 0 if ok, <0 on failure
+ */
+int image_setup_linux(bootm_headers_t *images);
 
 /*******************************************************************/
 /* New uImage format specific code (prefixed with fit_) */
@@ -631,7 +685,8 @@ void fit_conf_print (const void *fit, int noffset, const char *p);
 static inline int fit_image_check_target_arch (const void *fdt, int node)
 {
 #if defined(__ARM__)
-	if (!fit_image_check_arch (fdt, node, IH_ARCH_ARM))
+	if (!fit_image_check_arch (fdt, node, IH_ARCH_ARM)
+		|| !fit_image_check_arch (fdt, node, IH_ARCH_ARM64))
 #elif defined(__avr32__)
 	if (!fit_image_check_arch (fdt, node, IH_ARCH_AVR32))
 #elif defined(__bfin__)

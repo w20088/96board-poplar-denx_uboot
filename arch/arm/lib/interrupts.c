@@ -43,12 +43,6 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int interrupt_init (void)
 {
-	/*
-	 * setup up stacks if necessary
-	 */
-	IRQ_STACK_START = _armboot_start - CONFIG_SYS_MALLOC_LEN - CONFIG_SYS_GBL_DATA_SIZE - 4;
-	FIQ_STACK_START = IRQ_STACK_START - CONFIG_STACKSIZE_IRQ;
-
 	return arch_interrupt_init();
 }
 
@@ -91,7 +85,7 @@ int disable_interrupts (void)
 }
 #endif
 
-
+#if !(defined(CONFIG_SUPPORT_CA_RELEASE) || defined(CONFIG_SUPPORT_CA_DEBUG))
 void bad_mode (void)
 {
 	panic ("Resetting CPU ...\n");
@@ -185,3 +179,34 @@ void do_irq (struct pt_regs *pt_regs)
 	bad_mode ();
 }
 #endif
+#else
+void do_undefined_instruction (struct pt_regs *pt_regs)
+{
+}
+
+void do_software_interrupt (struct pt_regs *pt_regs)
+{
+}
+
+void do_prefetch_abort (struct pt_regs *pt_regs)
+{
+}
+
+void do_data_abort (struct pt_regs *pt_regs)
+{
+}
+
+void do_not_used (struct pt_regs *pt_regs)
+{
+}
+
+void do_fiq (struct pt_regs *pt_regs)
+{
+}
+
+#ifndef CONFIG_USE_IRQ
+void do_irq (struct pt_regs *pt_regs)
+{
+}
+#endif
+#endif /* !(defined(CONFIG_SUPPORT_CA_RELEASE) || defined(CONFIG_SUPPORT_CA_DEBUG)) */

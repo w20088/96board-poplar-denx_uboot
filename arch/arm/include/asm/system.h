@@ -57,7 +57,9 @@
 
 #ifndef __ASSEMBLY__
 
-#define isb() __asm__ __volatile__ ("" : : : "memory")
+#define isb() __asm__ __volatile__ ("isb" : : : "memory")
+#define dsb() __asm__ __volatile__ ("dsb" : : : "memory")
+#define dmb() __asm__ __volatile__ ("dmb" : : : "memory")
 
 #define nop() __asm__ __volatile__("mov\tr0,r0\t@ nop\n\t");
 

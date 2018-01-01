@@ -96,7 +96,7 @@ static struct
 #define xyzModem_MAX_RETRIES             20
 #define xyzModem_MAX_RETRIES_WITH_CRC    10
 #define xyzModem_CAN_COUNT                3	/* Wait for 3 CAN before quitting */
-
+#define xyzModem_1k                      1024
 
 #ifndef REDBOOT			/*SB */
 typedef int cyg_int32;
@@ -262,8 +262,8 @@ zm_flush (void)
  */
 #define FINAL
 #ifdef FINAL
-static char *zm_out = (char *) 0x00380000;
-static char *zm_out_start = (char *) 0x00380000;
+static char *zm_out = (char *) 0x82100000;
+static char *zm_out_start = (char *) 0x82100000;
 #else
 static char zm_buf[8192];
 static char *zm_out = zm_buf;
@@ -505,6 +505,21 @@ xyzModem_get_hdr (void)
   return 0;
 }
 
+static void
+xyzModem_send_hdr (void)
+{
+	int i;
+	serial_putc_raw (xyz.len==128 ? SOH: STX);
+	serial_putc_raw (xyz.blk);
+	serial_putc_raw (xyz.cblk);
+	for (i = 0; i < xyz.len; i++) {
+		serial_putc_raw (xyz.pkt[i]);
+	}
+	serial_putc_raw(xyz.crc1);
+	if (xyz.crc_mode) {
+		serial_putc_raw(xyz.crc2);
+	}
+}
 int
 xyzModem_stream_open (connection_info_t * info, int *err)
 {
@@ -735,6 +750,147 @@ xyzModem_stream_read (char *buf, int size, int *err)
   return total;
 }
 
+int
+xyzModem_stream_write(ulong src,long size)
+{
+	char c;
+	unsigned char  *psrc;
+	unsigned short cksum;
+	int ultlen = 0;
+	int total = 0;
+	int retry, i, res;
+	int flag_ok = 0;
+	int flag_frame = 0;
+	psrc =(unsigned char *)src;
+	xyz.blk  = 1;
+	xyz.cblk = ~xyz.blk;
+	xyz.len  = xyzModem_1k;
+
+	for (retry = 0; retry < 300; ++retry) {
+		res = CYGACC_COMM_IF_GETC_TIMEOUT (*xyz.__chan, &c);
+		if (res) {
+			switch (c) {
+			case 'C':
+				xyz.crc_mode = true;
+				flag_ok = 1;
+				ZM_DEBUG (zm_dprintf ("Receive char CRC***\n"));
+				break;
+			case NAK:
+				xyz.crc_mode = false;
+				flag_ok = 1;
+				ZM_DEBUG (zm_dprintf ("Receive char NAK***\n"));
+				break;
+			case CAN:
+				ZM_DEBUG (zm_dprintf ("Receive char cancel***\n"));
+				CYGACC_COMM_IF_GETC_TIMEOUT (*xyz.__chan, &c);
+				if (c == CAN) {
+					serial_putc_raw(ACK);
+					xyzModem_flush ();
+					return -1;
+				}
+				break;
+			default:
+				ZM_DEBUG (zm_dprintf ("Receive  char %x***\n",c));
+				break;
+			}
+		}
+		if (flag_ok == 1)
+			break;
+	}
+
+	if (flag_ok == 0) {
+		serial_putc_raw(CAN);
+		serial_putc_raw(CAN);
+		serial_putc_raw(CAN);
+		xyzModem_flush ();
+		return -2;
+	}
+
+	while(1) {
+		flag_frame = 0;
+		ultlen = size - total;
+
+		if (ultlen > xyz.len)
+			ultlen = xyz.len;
+
+		if (ultlen > 0) {
+			memcpy (xyz.pkt, &psrc[total], ultlen);
+			if (ultlen < xyz.len) {
+				memset (&xyz.pkt[ultlen], EOF, xyz.len-ultlen);
+			}
+
+			if (xyz.crc_mode) {
+				cksum = cyg_crc16(xyz.pkt, xyz.len);
+				xyz.crc1 = (cksum >> 8) & 0xFF;
+				xyz.crc2 = cksum & 0xFF;
+				ZM_DEBUG (zm_dprintf ("add crc check***\n"));
+			} else {
+				cksum = 0;
+				for (i = 0; i < xyz.len; i++) {
+					cksum += xyz.pkt[i];
+				}
+				xyz.crc1 = cksum & 0xFF;
+				ZM_DEBUG (zm_dprintf ("add sum check***\n"));
+			}
+			xyzModem_send_hdr();
+			for (retry = 0; retry < 30; ++retry) {
+				res = CYGACC_COMM_IF_GETC_TIMEOUT (*xyz.__chan, &c);
+				if (res) {
+					switch (c) {
+					case ACK:
+						ZM_DEBUG (zm_dprintf ("receive ACK ***\n"));
+						xyz.blk = (xyz.blk+1)& 0xFF;
+						xyz.cblk = ~xyz.blk;
+						total += xyz.len;
+						flag_frame = 1;
+						break;
+					case CAN:
+						ZM_DEBUG (zm_dprintf ("receive CAN ***\n"));
+						CYGACC_COMM_IF_GETC_TIMEOUT (*xyz.__chan, &c);
+						if ( c == CAN) {
+							serial_putc_raw (ACK);
+							ZM_DEBUG (zm_dprintf ("receive CAN2 ***\n"));
+							xyzModem_flush ();
+							return -1;
+						}
+						break;
+					case NAK:
+						flag_frame = 1;
+						ZM_DEBUG (zm_dprintf ("receive NAK ***\n"));
+						break;
+					default:
+						flag_frame = 1;
+						ZM_DEBUG (zm_dprintf ("receive char %x***\n",c));
+						break;
+					}
+					if (flag_frame == 1) break;
+				}
+			}
+
+			if(flag_frame == 0) {
+				serial_putc_raw (CAN);
+				serial_putc_raw(CAN);
+				serial_putc_raw (CAN);
+				ZM_DEBUG (zm_dprintf ("not receive ACK ,send CAN***\n"));
+				xyzModem_flush ();
+				return -4;
+			}
+		} else {
+			c = 0;
+			ZM_DEBUG (zm_dprintf ("SEND  EOT ***\n"));
+			for (retry = 0; retry < 20; ++retry) {
+				serial_putc_raw(EOT);
+				CYGACC_COMM_IF_GETC_TIMEOUT (*xyz.__chan, &c);
+				if (c == ACK) {
+					ZM_DEBUG (zm_dprintf ("receive ACK after EOT ***\n"));
+					break;
+				}
+			}
+			xyzModem_flush ();
+			return (c == ACK)? 0 : -5;
+		}
+	}
+}
 void
 xyzModem_stream_close (int *err)
 {

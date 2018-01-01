@@ -53,8 +53,8 @@ int _do_help (cmd_tbl_t *cmd_start, int cmd_items, cmd_tbl_t * cmdtp, int
 		for (i = cmd_items - 1; i > 0; --i) {
 			swaps = 0;
 			for (j = 0; j < i; ++j) {
-				if (strcmp (cmd_array[j]->name,
-					    cmd_array[j + 1]->name) > 0) {
+				if (strncmp (cmd_array[j]->name,
+					    cmd_array[j + 1]->name, strlen(cmd_array[j]->name) + 1) > 0) {
 					cmd_tbl_t *tmp;
 					tmp = cmd_array[j];
 					cmd_array[j] = cmd_array[j + 1];
@@ -363,7 +363,7 @@ int cmd_auto_complete(const char *const prompt, char *buf, int *np, int *colp)
 	int cnt;
 	char last_char;
 
-	if (strcmp(prompt, CONFIG_SYS_PROMPT) != 0)
+	if (strncmp(prompt, CONFIG_SYS_PROMPT, sizeof(CONFIG_SYS_PROMPT)) != 0)
 		return 0;	/* not in normal console */
 
 	cnt = strlen(buf);
@@ -373,7 +373,8 @@ int cmd_auto_complete(const char *const prompt, char *buf, int *np, int *colp)
 		last_char = '\0';
 
 	/* copy to secondary buffer which will be affected */
-	strcpy(tmp_buf, buf);
+	strncpy(tmp_buf, buf, sizeof(tmp_buf));
+	tmp_buf[sizeof(tmp_buf) - 1] = '\0';
 
 	/* separate into argv */
 	argc = make_argv(tmp_buf, sizeof(argv)/sizeof(argv[0]), argv);
