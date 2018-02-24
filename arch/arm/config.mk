@@ -21,7 +21,7 @@
 # MA 02111-1307 USA
 #
 
-CROSS_COMPILE ?= arm-linux-
+CROSS_COMPILE ?= arm-histbv310-linux-
 
 ifndef CONFIG_STANDALONE_LOAD_ADDR
 ifeq ($(SOC),omap3)
@@ -62,10 +62,10 @@ ifneq (,$(findstring -mabi=aapcs-linux,$(PLATFORM_CPPFLAGS)))
 # CONFIG_SPL_BUILD is defined or not. 'filter-out' the existing entry
 # before adding the correct one.
 ifdef CONFIG_SPL_BUILD
-PLATFORM_LIBS := $(SPLTREE)/arch/arm/lib/eabi_compat.o \
+#PLATFORM_LIBS := $(SPLTREE)/arch/arm/lib/eabi_compat.o \
 	$(filter-out %/arch/arm/lib/eabi_compat.o, $(PLATFORM_LIBS))
 else
-PLATFORM_LIBS := $(OBJTREE)/arch/arm/lib/eabi_compat.o \
+#PLATFORM_LIBS := $(OBJTREE)/arch/arm/lib/eabi_compat.o \
 	$(filter-out %/arch/arm/lib/eabi_compat.o, $(PLATFORM_LIBS))
 endif
 endif

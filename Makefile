@@ -133,6 +133,11 @@ export obj src
 # Make sure CDPATH settings don't interfere
 unexport CDPATH
 
+AUXIMAGE ?= $(TOPDIR)/prebuilt/auxcode_sign.img
+MKFLAGS +=-DVERSION=$(VERSION) -DPATCHLEVEL=$(PATCHLEVEL) -DSUBLEVEL=$(SUBLEVEL)
+MKFLAGS +=-DCONFIG_AUXIMAGE=\"$(AUXIMAGE)\"
+export MKFLAGS
+
 #########################################################################
 
 # The "tools" are needed early, so put this first
@@ -222,7 +227,7 @@ endif
 ifeq ($(CPU),mpc85xx)
 OBJS += $(CPUDIR)/resetvec.o
 endif
-
+OBJS += $(CPUDIR)/tail.o
 OBJS := $(addprefix $(obj),$(OBJS))
 
 LIBS  = lib/libgeneric.o
@@ -320,10 +325,18 @@ ifeq ($(SOC),exynos)
 LIBS += $(CPUDIR)/s5p-common/libs5p-common.o
 endif
 
+
+LIBS :=
+LIBS += $(CPUDIR)/lib$(CPU).o
+ifdef SOC
+LIBS += $(CPUDIR)/$(SOC)/lib$(SOC).o
+endif
+
 LIBS := $(addprefix $(obj),$(sort $(LIBS)))
 .PHONY : $(LIBS)
 
 LIBBOARD = board/$(BOARDDIR)/lib$(BOARD).o
+LIBBOARD =
 LIBBOARD := $(addprefix $(obj),$(LIBBOARD))
 
 # Add GCC lib
@@ -370,7 +383,7 @@ BOARD_SIZE_CHECK =
 endif
 
 # Always append ALL so that arch config.mk's can add custom ones
-ALL-y += $(obj)u-boot.srec $(obj)u-boot.bin $(obj)System.map
+ALL-y += $(obj)u-boot.srec $(obj)u-boot.bin $(obj)System.map $(obj)u-boot.dis
 
 ALL-$(CONFIG_NAND_U_BOOT) += $(obj)u-boot-nand.bin
 ALL-$(CONFIG_ONENAND_U_BOOT) += $(obj)u-boot-onenand.bin
@@ -393,9 +406,14 @@ $(obj)u-boot.hex:	$(obj)u-boot
 $(obj)u-boot.srec:	$(obj)u-boot
 		$(OBJCOPY) -O srec $< $@
 
+sinclude platform.mk
+
 $(obj)u-boot.bin:	$(obj)u-boot
 		$(OBJCOPY) ${OBJCFLAGS} -O binary $< $@
 		$(BOARD_SIZE_CHECK)
+		$(OBJCOPY) -j .text -O binary $< $(obj)u-boot.text
+		@cp -fv $@ $(obj)fastboot.bin
+		@echo fastboot.bin is Ready.
 
 $(obj)u-boot.ldr:	$(obj)u-boot
 		$(CREATE_LDR_ENV)
@@ -465,6 +483,7 @@ GEN_UBOOT = \
 		cd $(LNDIR) && $(LD) $(LDFLAGS) $(LDFLAGS_$(@F)) $$UNDEF_SYM $(__OBJS) \
 			--start-group $(__LIBS) --end-group $(PLATFORM_LIBS) \
 			-Map u-boot.map -o u-boot
+
 endif
 
 $(obj)u-boot:	depend \
@@ -622,7 +641,7 @@ $(VERSION_FILE):
 		@( localvers='$(shell $(TOPDIR)/tools/setlocalversion $(TOPDIR))' ; \
 		   printf '#define PLAIN_VERSION "%s%s"\n' \
 			"$(U_BOOT_VERSION)" "$${localvers}" ; \
-		   printf '#define U_BOOT_VERSION "U-Boot %s%s"\n' \
+		   printf '#define U_BOOT_VERSION "Fastboot %s%s"\n' \
 			"$(U_BOOT_VERSION)" "$${localvers}" ; \
 		) > $@.tmp
 		@( printf '#define CC_VERSION_STRING "%s"\n' \
@@ -659,6 +678,9 @@ unconfig:
 		$(obj)include/autoconf.mk $(obj)include/autoconf.mk.dep
 
 %_config::	unconfig
+	@echo "CFG_REG_START  = 64"   > platform.mk
+	@echo "CFG_REG_LENGTH = 10240"  >> platform.mk
+	@echo "CFG_REG_END    = 10304"  >> platform.mk
 	@$(MKCONFIG) -A $(@:_config=)
 
 sinclude $(obj).boards.depend
@@ -747,6 +769,7 @@ clean:
 		\( -name 'core' -o -name '*.bak' -o -name '*~' -o -name '*.su' \
 		-o -name '*.o'	-o -name '*.a' -o -name '*.exe'	\) -print \
 		| xargs rm -f
+	@rm -f platform.mk
 
 # Removes everything not needed for testing u-boot
 tidy:	clean
@@ -758,7 +781,8 @@ clobber:	tidy
 		-print0 | xargs -0 rm -f
 	@rm -f $(OBJS) $(obj)*.bak $(obj)ctags $(obj)etags $(obj)TAGS \
 		$(obj)cscope.* $(obj)*.*~
-	@rm -f $(obj)u-boot $(obj)u-boot.map $(obj)u-boot.hex $(ALL-y)
+	@rm -f $(obj)fastboot.bin $(obj)fastboot
+	@rm -f $(obj)u-boot $(obj)u-boot.map $(obj)u-boot.hex $(obj)u-boot.text $(ALL-y)
 	@rm -f $(obj)u-boot.kwb
 	@rm -f $(obj)u-boot.imx
 	@rm -f $(obj)u-boot.ubl
@@ -784,4 +808,6 @@ backup:
 	F=`basename $(TOPDIR)` ; cd .. ; \
 	gtar --force-local -zcvf `LC_ALL=C date "+$$F-%Y-%m-%d-%T.tar.gz"` $$F
 
+debug:
+	echo $(LIBS)
 #########################################################################
