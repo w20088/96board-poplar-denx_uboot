@@ -256,14 +256,12 @@ init_fnc_t *init_sequence[] = {
 	NULL,
 };
 
-unsigned int board_init_f(ulong bootflag)
+void board_init_f(ulong bootflag)
 {
 	bd_t *bd;
 	init_fnc_t **init_fnc_ptr;
 	gd_t *id;
 	ulong addr, addr_sp;
-	extern ulong base_sp;
-
 #ifdef CONFIG_PRAM
 	ulong reg;
 #endif
@@ -371,9 +369,8 @@ unsigned int board_init_f(ulong bootflag)
 	 * reserve memory for U-Boot code, data & bss
 	 * round down to next 4 kB limit
 	 */
-	//addr -= gd->mon_len;
-	//addr &= ~(4096 - 1);
-	addr = CONFIG_SYS_TEXT_BASE;   /* addr = _TEXT_BASE */
+	addr -= gd->mon_len;
+	addr &= ~(4096 - 1);
 
 	debug("Reserving %ldk for U-Boot at: %08lx\n", gd->mon_len >> 10, addr);
 
@@ -438,10 +435,7 @@ unsigned int board_init_f(ulong bootflag)
 	debug("relocation Offset is: %08lx\n", gd->reloc_off);
 	memcpy(id, (void *)gd, sizeof(gd_t));
 
-	base_sp = addr_sp;
-
-	//relocate_code(addr_sp, id, addr);
-	return (unsigned int)id;
+	relocate_code(addr_sp, id, addr);
 
 	/* NOTREACHED - relocate_code() does not return */
 }
@@ -530,9 +524,8 @@ void board_init_r(gd_t *id, ulong dest_addr)
 		print_size(flash_size, "\n");
 # endif /* CONFIG_SYS_FLASH_CHECKSUM */
 	} else {
-		puts("0 KB\n\r");
-		//puts(failed);
-		//hang();
+		puts(failed);
+		hang();
 	}
 #endif
 
@@ -653,9 +646,6 @@ void board_init_r(gd_t *id, ulong dest_addr)
 		setenv("mem", (char *)memsz);
 	}
 #endif
-
-	run_command("mtdparts default", 0);
-	//mtdparts_init();	
 
 	/* main_loop() can return to retry autoboot, if so just run it again. */
 	for (;;) {
